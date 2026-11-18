@@ -7,6 +7,7 @@ import {
   uniqueIndex,
   type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 export enum UserRole {
   Student = "student",
@@ -31,7 +32,7 @@ export enum QuestionType {
   TrueFalse = "true_false",
 }
 
-export enum RefundStatus {
+export enum RefundRequestStatus {
   Open = "open",
   Approved = "approved",
   Declined = "declined",
@@ -229,8 +230,8 @@ export const purchases = sqliteTable(
   (table) => [index("purchases_course_idx").on(table.courseId)]
 );
 
-export const refunds = sqliteTable(
-  "refunds",
+export const refundRequests = sqliteTable(
+  "refund_requests",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     purchaseId: integer("purchase_id")
@@ -238,19 +239,37 @@ export const refunds = sqliteTable(
       .references(() => purchases.id),
     status: text("status")
       .notNull()
-      .$type<RefundStatus>()
-      .default(RefundStatus.Open),
+      .$type<RefundRequestStatus>()
+      .default(RefundRequestStatus.Open),
     // The learner's own words, in the box on the course page.
     reason: text("reason").notNull(),
-    // Null until someone approves — a declined request refunds nothing.
+    // Null until real money movement is confirmed; approval alone leaves it null.
     amountRefunded: integer("amount_refunded"),
+    eligibilityCompletedLessons: integer("eligibility_completed_lessons")
+      .notNull()
+      .default(0),
+    eligibilityTotalLessons: integer("eligibility_total_lessons")
+      .notNull()
+      .default(0),
+    eligibilityWatchedSeconds: integer("eligibility_watched_seconds")
+      .notNull()
+      .default(0),
+    eligibilityRedeemedSeats: integer("eligibility_redeemed_seats")
+      .notNull()
+      .default(0),
     requestedAt: text("requested_at")
       .notNull()
       .$defaultFn(() => new Date().toISOString()),
     resolvedAt: text("resolved_at"),
     resolvedByUserId: integer("resolved_by_user_id").references(() => users.id),
+    resolutionNote: text("resolution_note"),
   },
-  (table) => [index("refunds_purchase_idx").on(table.purchaseId)]
+  (table) => [
+    index("refund_requests_purchase_idx").on(table.purchaseId),
+    uniqueIndex("refund_requests_one_open_per_purchase_idx")
+      .on(table.purchaseId)
+      .where(sql`${table.status} = 'open'`),
+  ]
 );
 
 export const teams = sqliteTable("teams", {

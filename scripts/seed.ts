@@ -10,7 +10,7 @@ import {
   UserRole,
   CourseStatus,
   LessonProgressStatus,
-  RefundStatus,
+  RefundRequestStatus,
   QuestionType,
   TeamMemberRole,
 } from "../app/db/schema";
@@ -77,6 +77,7 @@ async function seed() {
     DROP TABLE IF EXISTS coupons;
     DROP TABLE IF EXISTS team_members;
     DROP TABLE IF EXISTS teams;
+    DROP TABLE IF EXISTS refund_requests;
     DROP TABLE IF EXISTS refunds;
     DROP TABLE IF EXISTS purchases;
     DROP TABLE IF EXISTS enrollments;
@@ -2772,11 +2773,15 @@ This course is still in draft while the cluster examples are rewritten against t
       updatedAt: daysAgo(6),
     })
     .run();
-  db.insert(schema.refunds)
+  db.insert(schema.refundRequests)
     .values({
       purchaseId: liamPurchase.id,
-      status: RefundStatus.Open,
+      status: RefundRequestStatus.Open,
       reason: "Bought the wrong one, I meant the advanced course.",
+      eligibilityCompletedLessons: 3,
+      eligibilityTotalLessons: course1LessonIds.length,
+      eligibilityWatchedSeconds: 0,
+      eligibilityRedeemedSeats: 0,
       requestedAt: daysAgo(4),
     })
     .run();

@@ -16,10 +16,10 @@ import {
   courseRatings,
   purchases,
   coupons,
-  refunds,
+  refundRequests,
   videoWatchEvents,
   LessonProgressStatus,
-  RefundStatus,
+  RefundRequestStatus,
 } from "~/db/schema";
 import { eq, and, or, sql, inArray, isNotNull } from "drizzle-orm";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
@@ -379,14 +379,17 @@ function getPurchaseForCourse(userId: number, courseId: number) {
     .get();
 }
 
-function getOpenRefundRequest(purchaseId: number) {
+function getBlockingRefundRequest(purchaseId: number) {
   return db
-    .select({ id: refunds.id })
-    .from(refunds)
+    .select({ id: refundRequests.id })
+    .from(refundRequests)
     .where(
       and(
-        eq(refunds.purchaseId, purchaseId),
-        eq(refunds.status, RefundStatus.Open)
+        eq(refundRequests.purchaseId, purchaseId),
+        inArray(refundRequests.status, [
+          RefundRequestStatus.Open,
+          RefundRequestStatus.Approved,
+        ])
       )
     )
     .get();
@@ -396,7 +399,7 @@ function getCompletedLessonCount(userId: number, lessonIds: number[]) {
   if (lessonIds.length === 0) return 0;
 
   const result = db
-    .select({ count: sql<number>`count(*)` })
+    .select({ count: sql<number>`count(distinct ${lessonProgress.lessonId})` })
     .from(lessonProgress)
     .where(
       and(
@@ -447,7 +450,7 @@ function getRefundOffer(userId: number, course: { id: number }) {
   const purchase = getPurchaseForCourse(userId, course.id);
 
   if (!purchase) return null;
-  if (getOpenRefundRequest(purchase.id)) return null;
+  if (getBlockingRefundRequest(purchase.id)) return null;
 
   const purchasedDay = asDayString(new Date(purchase.createdAt));
   const windowEnd = new Date(purchase.createdAt);

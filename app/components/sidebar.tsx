@@ -17,6 +17,7 @@ import {
   Sun,
   LogOut,
   Settings,
+  ReceiptText,
 } from "lucide-react";
 
 interface CurrentUser {
@@ -79,6 +80,12 @@ const navItems: NavItem[] = [
     to: "/instructor/questions",
     icon: <MessageSquare className="size-4" />,
     roles: [UserRole.Instructor, UserRole.Admin],
+  },
+  {
+    label: "Refund Requests",
+    to: "/admin/refunds",
+    icon: <ReceiptText className="size-4" />,
+    roles: [UserRole.Admin],
   },
   {
     label: "Manage Users",

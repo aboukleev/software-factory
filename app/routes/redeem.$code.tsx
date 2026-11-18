@@ -13,6 +13,7 @@ import { data } from "react-router";
 import { db } from "~/db";
 import { purchases, coupons, courses, enrollments } from "~/db/schema";
 import { eq, and } from "drizzle-orm";
+import { isPurchaseRedemptionBlocked } from "~/services/refundRequestService";
 
 function getCourseById(id: number) {
   return db.select().from(courses).where(eq(courses.id, id)).get();
@@ -20,6 +21,10 @@ function getCourseById(id: number) {
 
 function getCouponByCode(code: string) {
   return db.select().from(coupons).where(eq(coupons.code, code)).get();
+}
+
+function isRedemptionBlockedByRefund(purchaseId: number) {
+  return isPurchaseRedemptionBlocked(db, purchaseId);
 }
 
 function isUserEnrolled(userId: number, courseId: number) {
@@ -50,6 +55,14 @@ function redeemCoupon(
 
   if (coupon.redeemedByUserId !== null) {
     return { ok: false, error: "Coupon has already been redeemed" };
+  }
+
+  if (isRedemptionBlockedByRefund(coupon.purchaseId)) {
+    return {
+      ok: false,
+      error:
+        "This team seat is unavailable while its Refund Request is open or approved",
+    };
   }
 
   const existingEnrollment = db
@@ -136,6 +149,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   const alreadyRedeemed = coupon.redeemedByUserId !== null;
   const alreadyEnrolled = isUserEnrolled(currentUserId, coupon.courseId);
+  const refundBlocked = isRedemptionBlockedByRefund(coupon.purchaseId);
 
   // Check country mismatch upfront so we can show a clear message
   let countryMismatch = false;
@@ -157,6 +171,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     alreadyRedeemed,
     alreadyEnrolled,
     countryMismatch,
+    refundBlocked,
   };
 }
 
@@ -194,8 +209,14 @@ export default function Redeem({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { course, code, alreadyRedeemed, alreadyEnrolled, countryMismatch } =
-    loaderData;
+  const {
+    course,
+    code,
+    alreadyRedeemed,
+    alreadyEnrolled,
+    countryMismatch,
+    refundBlocked,
+  } = loaderData;
   const fetcher = useFetcher();
   const isSubmitting = fetcher.state !== "idle";
 
@@ -208,8 +229,6 @@ export default function Redeem({
   }, [fetcher.data, actionData]);
 
   // Determine which state to show
-  const canRedeem = !alreadyRedeemed && !alreadyEnrolled && !countryMismatch;
-
   return (
     <div className="mx-auto max-w-2xl p-6 lg:p-8">
       <h1 className="mb-2 text-2xl font-bold">Redeem Coupon</h1>
@@ -259,6 +278,19 @@ export default function Redeem({
                   Go to Course
                 </Button>
               </Link>
+            </div>
+          ) : refundBlocked ? (
+            <div className="rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
+              <div className="flex items-center justify-center gap-2 text-amber-700 dark:text-amber-400">
+                <AlertCircle className="size-5" />
+                <span className="font-medium">
+                  This team seat is unavailable
+                </span>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                The purchase has an open or approved Refund Request, so this
+                coupon can no longer be redeemed.
+              </p>
             </div>
           ) : countryMismatch ? (
             <div className="rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
