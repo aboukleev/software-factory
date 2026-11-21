@@ -35,6 +35,41 @@ A Student who has lost their Enrollment on a course but still has progress on it
 Seconds of video a Student has actually played in a course: the furthest point reached in each lesson, added up. Not lessons opened.
 _Avoid_: Viewed, Progress
 
+### Course discussions
+
+**Question**:
+A Student's top-level contribution to a lesson discussion, whether they ask for help or share what they found.
+_Avoid_: Top-level comment, Post
+
+**Reply**:
+A direct response to a Question. Replies do not have further Replies.
+_Avoid_: Response, Child comment
+
+### Notifications
+
+**Notification Event**:
+A meaningful occurrence in Cadence that may produce a Notification for someone, such as a Student asking a question.
+_Avoid_: Alert, Message
+
+**Notification**:
+Durable information intended for one recipient because of a Notification Event. A transient toast is interface feedback, not a Notification.
+_Avoid_: Alert, Toast
+
+**Notification Feed**:
+The in-app list of a recipient's Notifications.
+_Avoid_: Inbox, Notification Centre
+
+**Read Notification**:
+A Notification the recipient has opened or acknowledged in the Notification Feed.
+_Avoid_: Seen Notification
+
+**Channel**:
+A place where a Notification can be delivered. This effort includes only the in-app Notification Feed.
+
+**Delivery**:
+An attempt to send a Notification to its recipient through a Channel.
+_Avoid_: Notification
+
 ### Purchases
 
 **Purchase**:
