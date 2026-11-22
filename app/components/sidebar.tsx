@@ -1,4 +1,4 @@
-import { NavLink, Form } from "react-router";
+import { NavLink, Form, Link, useLocation, useSearchParams } from "react-router";
 import { useState, useEffect } from "react";
 import { cn } from "~/lib/utils";
 import { UserRole } from "~/db/schema";
@@ -18,6 +18,7 @@ import {
   Sun,
   LogOut,
   Settings,
+  Bell,
 } from "lucide-react";
 
 interface CurrentUser {
@@ -120,6 +121,11 @@ export function Sidebar({
 }: SidebarProps) {
   const currentUserRole = currentUser?.role ?? null;
   const [isDark, setIsDark] = useState(false);
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const isNotificationPrototype =
+    location.pathname === "/prototype/notification-feed";
+  const prototypeVariant = searchParams.get("variant") ?? "A";
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains("dark"));
@@ -140,9 +146,37 @@ export function Sidebar({
         <NavLink to="/" className="text-lg font-bold tracking-tight">
           Cadence
         </NavLink>
+        {isNotificationPrototype && prototypeVariant === "B" && (
+          <Link
+            to={`${location.pathname}?${new URLSearchParams({
+              ...Object.fromEntries(searchParams),
+              open: searchParams.get("open") === "1" ? "0" : "1",
+            })}`}
+            aria-label="Open Notification Feed, 3 unread Notifications"
+            className="relative ml-auto rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            <Bell className="size-4" />
+            <span className="absolute right-1 top-1 size-2 rounded-full bg-blue-600 ring-2 ring-sidebar" />
+          </Link>
+        )}
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
+        {isNotificationPrototype && prototypeVariant === "A" && (
+          <Link
+            to={`${location.pathname}?${new URLSearchParams({
+              ...Object.fromEntries(searchParams),
+              variant: "A",
+            })}`}
+            className="flex items-center gap-3 rounded-md bg-sidebar-accent px-3 py-2 text-sm font-medium text-sidebar-accent-foreground"
+          >
+            <Bell className="size-4" />
+            <span>Notifications</span>
+            <span className="ml-auto min-w-5 rounded-full bg-blue-600 px-1.5 text-center text-xs leading-5 text-white">
+              3
+            </span>
+          </Link>
+        )}
         {navItems
           .filter((item) => isVisible(item, currentUserRole))
           .map((item) => (
