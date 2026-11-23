@@ -354,6 +354,69 @@ export const comments = sqliteTable(
   ]
 );
 
+export const notificationEvents = sqliteTable(
+  "notification_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    identity: text("identity").notNull(),
+    kind: text("kind").notNull().$type<"question.created">(),
+    occurredAt: text("occurred_at").notNull(),
+    sourceCommentId: integer("source_comment_id")
+      .notNull()
+      .references(() => comments.id),
+    rootQuestionId: integer("root_question_id")
+      .notNull()
+      .references(() => comments.id),
+    actorId: integer("actor_id")
+      .notNull()
+      .references(() => users.id),
+    actorCapacity: text("actor_capacity").notNull().$type<"student">(),
+    recipientId: integer("recipient_id")
+      .notNull()
+      .references(() => users.id),
+    courseId: integer("course_id")
+      .notNull()
+      .references(() => courses.id),
+    lessonId: integer("lesson_id")
+      .notNull()
+      .references(() => lessons.id),
+  },
+  (table) => [
+    uniqueIndex("notification_events_identity_unique").on(table.identity),
+  ]
+);
+
+export const notificationDeliveries = sqliteTable(
+  "notification_deliveries",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    notificationEventId: integer("notification_event_id")
+      .notNull()
+      .references(() => notificationEvents.id),
+    recipientId: integer("recipient_id")
+      .notNull()
+      .references(() => users.id),
+    channel: text("channel").notNull().$type<"in_app">(),
+    workflowKey: text("workflow_key").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    providerPayload: text("provider_payload").notNull(),
+    status: text("status").notNull().$type<"queued">(),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    uniqueIndex("notification_deliveries_event_recipient_channel_unique").on(
+      table.notificationEventId,
+      table.recipientId,
+      table.channel
+    ),
+    uniqueIndex("notification_deliveries_idempotency_unique").on(
+      table.idempotencyKey
+    ),
+  ]
+);
+
 export const videoWatchEvents = sqliteTable("video_watch_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id")

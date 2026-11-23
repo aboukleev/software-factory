@@ -17,6 +17,7 @@ import {
   Sun,
   LogOut,
   Settings,
+  Bell,
 } from "lucide-react";
 
 interface CurrentUser {
@@ -40,6 +41,13 @@ interface SidebarProps {
   currentUser: CurrentUser | null;
   recentCourses?: RecentCourse[];
   isTeamAdmin?: boolean;
+  notificationFeed?: Array<{
+    id: string;
+    readAt: string | null;
+    occurredAt: string;
+    courseTitle: string;
+    lessonTitle: string;
+  }>;
 }
 
 interface NavItem {
@@ -110,9 +118,12 @@ export function Sidebar({
   currentUser,
   recentCourses = [],
   isTeamAdmin = false,
+  notificationFeed = [],
 }: SidebarProps) {
   const currentUserRole = currentUser?.role ?? null;
   const [isDark, setIsDark] = useState(false);
+  const [feedOpen, setFeedOpen] = useState(false);
+  const unreadCount = notificationFeed.filter((item) => !item.readAt).length;
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains("dark"));
@@ -129,10 +140,83 @@ export function Sidebar({
 
   return (
     <aside className="flex h-screen w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="flex h-14 items-center border-b border-sidebar-border px-4">
+      <div className="relative flex h-14 items-center justify-between border-b border-sidebar-border px-4">
         <NavLink to="/" className="text-lg font-bold tracking-tight">
           Cadence
         </NavLink>
+        {currentUser && (
+          <button
+            type="button"
+            aria-label={
+              unreadCount > 0
+                ? `Notification Feed, ${unreadCount} unread`
+                : "Notification Feed"
+            }
+            aria-expanded={feedOpen}
+            onClick={() => setFeedOpen((open) => !open)}
+            className="relative rounded-md p-2 hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            <Bell className="size-4" />
+            {unreadCount > 0 && (
+              <span
+                aria-hidden="true"
+                className="absolute right-1 top-1 size-2 rounded-full bg-primary"
+              />
+            )}
+          </button>
+        )}
+        {feedOpen && currentUser && (
+          <section
+            aria-label="Notification Feed"
+            className="absolute left-2 top-12 z-40 w-80 max-w-[calc(100vw-1rem)] rounded-md border bg-popover p-3 text-popover-foreground shadow-lg"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="font-semibold">Notification Feed</h2>
+              <span className="text-xs text-muted-foreground">
+                {unreadCount} unread
+              </span>
+            </div>
+            {notificationFeed.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                New Questions and Replies will appear here.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {notificationFeed.map((item) => (
+                  <li key={item.id}>
+                    <Form method="post" action="/notifications/read">
+                      <input
+                        type="hidden"
+                        name="notificationId"
+                        value={item.id}
+                      />
+                      <button
+                        type="submit"
+                        className={cn(
+                          "w-full rounded-md border p-3 text-left text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2",
+                          !item.readAt && "font-semibold"
+                        )}
+                      >
+                        <span className="block">
+                          A Student asked a Question.
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {item.courseTitle} · {item.lessonTitle}
+                        </span>
+                        <time
+                          dateTime={item.occurredAt}
+                          className="block text-xs text-muted-foreground"
+                        >
+                          {new Date(item.occurredAt).toLocaleString()}
+                        </time>
+                      </button>
+                    </Form>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
