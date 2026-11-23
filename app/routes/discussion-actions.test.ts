@@ -4,11 +4,16 @@ import {
   categories,
   comments,
   courses,
+  enrollments,
   lessons,
   modules,
+  notificationDeliveries,
+  notificationEvents,
+  UserRole,
   users,
 } from "~/db/schema";
 import { seedBaseData } from "~/test/setup";
+import { createDiscussionPost } from "~/services/discussionService";
 import { action as lessonAction } from "./courses.$slug.lessons.$lessonId";
 import { action as instructorQuestionsAction } from "./instructor.questions";
 
@@ -44,6 +49,9 @@ function request(path: string, body: URLSearchParams) {
 
 function seedLesson() {
   const base = seedBaseData(db);
+  db.insert(enrollments)
+    .values({ userId: base.user.id, courseId: base.course.id })
+    .run();
   const module = db
     .insert(modules)
     .values({ courseId: base.course.id, title: "Start here", position: 1 })
@@ -58,9 +66,12 @@ function seedLesson() {
 }
 
 beforeEach(() => {
+  db.delete(notificationDeliveries).run();
+  db.delete(notificationEvents).run();
   db.delete(comments).run();
   db.delete(lessons).run();
   db.delete(modules).run();
+  db.delete(enrollments).run();
   db.delete(courses).run();
   db.delete(categories).run();
   db.delete(users).run();
@@ -100,11 +111,15 @@ describe("discussion route actions", () => {
 
   test("the unanswered Questions action creates a Reply", async () => {
     const { user, instructor, course, lesson } = seedLesson();
-    const question = db
-      .insert(comments)
-      .values({ userId: user.id, lessonId: lesson.id, body: "Question" })
-      .returning()
-      .get();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      db
+    ).source;
     accessMocks.requireStaff.mockResolvedValue({ userId: instructor.id });
 
     const result = await instructorQuestionsAction({
@@ -131,6 +146,57 @@ describe("discussion route actions", () => {
     expect(accessMocks.requireStaff).toHaveBeenCalledWith(
       expect.any(Request),
       course.id
+    );
+    expect(db.select().from(notificationEvents).all()).toContainEqual(
+      expect.objectContaining({
+        kind: "staff-reply.created",
+        actorCapacity: "instructor",
+        recipientId: user.id,
+      })
+    );
+  });
+
+  test("the unanswered Questions action records Platform Admin capacity", async () => {
+    const { user, course, lesson } = seedLesson();
+    const admin = db
+      .insert(users)
+      .values({
+        name: "Platform Admin",
+        email: "platform-admin@example.com",
+        role: UserRole.Admin,
+      })
+      .returning()
+      .get();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question for Cadence",
+      },
+      db
+    ).source;
+    accessMocks.requireStaff.mockResolvedValue({ userId: admin.id });
+
+    expect(
+      await instructorQuestionsAction({
+        request: request(
+          "/instructor/questions",
+          new URLSearchParams({
+            intent: "reply",
+            commentId: String(question.id),
+            body: "Platform answer",
+          })
+        ),
+      } as never)
+    ).toEqual({ ok: true });
+    expect(db.select().from(notificationEvents).all()).toContainEqual(
+      expect.objectContaining({
+        kind: "staff-reply.created",
+        actorId: admin.id,
+        actorCapacity: "platform_admin",
+        recipientId: user.id,
+      })
     );
   });
 });

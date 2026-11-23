@@ -1,13 +1,17 @@
 import { describe, expect, test } from "vitest";
+import { eq } from "drizzle-orm";
 import { createDiscussionPost } from "~/services/discussionService";
 import { createTestDb, seedBaseData } from "~/test/setup";
 import {
   comments,
+  courses,
   enrollments,
   lessons,
   modules,
   notificationDeliveries,
   notificationEvents,
+  UserRole,
+  users,
 } from "~/db/schema";
 import { FakeKnockAdapter } from "~/services/notificationProvider";
 
@@ -69,6 +73,8 @@ describe("createDiscussionPost", () => {
     );
     expect(JSON.parse(delivery.providerPayload)).toEqual({
       eventIdentity: `question.created:${result.source.id}`,
+      eventKind: "question.created",
+      actorCapacity: "student",
       occurredAt: result.source.createdAt,
       sourceCommentId: result.source.id,
       rootQuestionId: result.source.id,
@@ -86,6 +92,600 @@ describe("createDiscussionPost", () => {
         readAt: null,
       }),
     ]);
+  });
+
+  test("notifies the Student when the owning Instructor replies to a qualifying Question", async () => {
+    const database = createTestDb();
+    const { user, instructor, course } = seedBaseData(database);
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const provider = new FakeKnockAdapter();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      database,
+      provider
+    ).source;
+
+    const reply = createDiscussionPost(
+      {
+        authorization: { userId: instructor.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: question.id,
+        body: "Answer",
+      },
+      database,
+      provider
+    ).source;
+
+    const event = database
+      .select()
+      .from(notificationEvents)
+      .all()
+      .find((candidate) => candidate.sourceCommentId === reply.id);
+    expect(event).toEqual({
+      id: expect.any(Number),
+      identity: `staff-reply.created:${reply.id}`,
+      kind: "staff-reply.created",
+      occurredAt: reply.createdAt,
+      sourceCommentId: reply.id,
+      rootQuestionId: question.id,
+      actorId: instructor.id,
+      actorCapacity: "instructor",
+      recipientId: user.id,
+      courseId: course.id,
+      lessonId: lesson.id,
+    });
+    expect(database.select().from(notificationDeliveries).all()).toContainEqual(
+      expect.objectContaining({
+        notificationEventId: event!.id,
+        recipientId: user.id,
+        workflowKey: "staff-reply-created",
+        idempotencyKey: `staff-reply.created:${reply.id}:${user.id}:in_app`,
+        status: "queued",
+      })
+    );
+
+    await provider.settled();
+    expect(provider.list(user.id)).toContainEqual(
+      expect.objectContaining({
+        eventIdentity: `staff-reply.created:${reply.id}`,
+        sourceCommentId: reply.id,
+        rootQuestionId: question.id,
+        actorCapacity: "instructor",
+      })
+    );
+  });
+
+  test("captures Platform Admin capacity for a qualifying Reply", async () => {
+    const database = createTestDb();
+    const { user, course } = seedBaseData(database);
+    const admin = database
+      .insert(users)
+      .values({
+        name: "Platform Admin",
+        email: "admin@example.com",
+        role: UserRole.Admin,
+      })
+      .returning()
+      .get();
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      database
+    ).source;
+
+    const reply = createDiscussionPost(
+      {
+        authorization: { userId: admin.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: question.id,
+        body: "Platform answer",
+      },
+      database
+    ).source;
+
+    expect(
+      database
+        .select()
+        .from(notificationEvents)
+        .all()
+        .find((event) => event.sourceCommentId === reply.id)
+    ).toEqual(
+      expect.objectContaining({
+        identity: `staff-reply.created:${reply.id}`,
+        actorId: admin.id,
+        actorCapacity: "platform_admin",
+        recipientId: user.id,
+        rootQuestionId: question.id,
+      })
+    );
+  });
+
+  test("does not notify for non-qualifying Reply actors or staff top-level posts", () => {
+    const database = createTestDb();
+    const { user, instructor, course } = seedBaseData(database);
+    const otherStudent = database
+      .insert(users)
+      .values({
+        name: "Other Student",
+        email: "other-student@example.com",
+        role: UserRole.Student,
+      })
+      .returning()
+      .get();
+    const otherInstructor = database
+      .insert(users)
+      .values({
+        name: "Other Instructor",
+        email: "other-instructor@example.com",
+        role: UserRole.Instructor,
+      })
+      .returning()
+      .get();
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      database
+    ).source;
+    const baselineEvents = database.select().from(notificationEvents).all();
+    const baselineDeliveries = database
+      .select()
+      .from(notificationDeliveries)
+      .all();
+
+    for (const [actorId, parentId, body] of [
+      [otherStudent.id, question.id, "Student Reply"],
+      [otherInstructor.id, question.id, "Non-owning Instructor Reply"],
+      [instructor.id, null, "Instructor contribution"],
+    ] as const) {
+      createDiscussionPost(
+        {
+          authorization: { userId: actorId, courseId: course.id },
+          lessonId: lesson.id,
+          parentId,
+          body,
+        },
+        database
+      );
+    }
+
+    expect(database.select().from(notificationEvents).all()).toEqual(
+      baselineEvents
+    );
+    expect(database.select().from(notificationDeliveries).all()).toEqual(
+      baselineDeliveries
+    );
+  });
+
+  test("does not notify for a Reply to a pre-launch Question", () => {
+    const database = createTestDb();
+    const { user, instructor, course } = seedBaseData(database);
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const historicalQuestion = database
+      .insert(comments)
+      .values({ userId: user.id, lessonId: lesson.id, body: "Old Question" })
+      .returning()
+      .get();
+
+    createDiscussionPost(
+      {
+        authorization: { userId: instructor.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: historicalQuestion.id,
+        body: "New answer",
+      },
+      database
+    );
+
+    expect(database.select().from(notificationEvents).all()).toEqual([]);
+    expect(database.select().from(notificationDeliveries).all()).toEqual([]);
+  });
+
+  test("retains a self-notification Event while suppressing Delivery", () => {
+    const database = createTestDb();
+    const { user, course } = seedBaseData(database);
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      database
+    ).source;
+    database
+      .update(users)
+      .set({ role: UserRole.Admin })
+      .where(eq(users.id, user.id))
+      .run();
+    const deliveriesBefore = database
+      .select()
+      .from(notificationDeliveries)
+      .all();
+
+    const reply = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: question.id,
+        body: "My own answer",
+      },
+      database
+    ).source;
+
+    expect(database.select().from(notificationEvents).all()).toContainEqual(
+      expect.objectContaining({
+        identity: `staff-reply.created:${reply.id}`,
+        actorCapacity: "platform_admin",
+        actorId: user.id,
+        recipientId: user.id,
+      })
+    );
+    expect(database.select().from(notificationDeliveries).all()).toEqual(
+      deliveriesBefore
+    );
+  });
+
+  test("keeps separately committed identical Replies as separate Events", () => {
+    const database = createTestDb();
+    const { user, instructor, course } = seedBaseData(database);
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      database
+    ).source;
+
+    const replies = ["Same answer", "Same answer"].map(
+      (body) =>
+        createDiscussionPost(
+          {
+            authorization: { userId: instructor.id, courseId: course.id },
+            lessonId: lesson.id,
+            parentId: question.id,
+            body,
+          },
+          database
+        ).source
+    );
+
+    const replyEvents = database
+      .select()
+      .from(notificationEvents)
+      .all()
+      .filter((event) => event.kind === "staff-reply.created");
+    expect(replyEvents.map((event) => event.identity)).toEqual([
+      `staff-reply.created:${replies[0].id}`,
+      `staff-reply.created:${replies[1].id}`,
+    ]);
+    expect(database.select().from(notificationDeliveries).all()).toHaveLength(
+      3
+    );
+  });
+
+  test("captures immutable Reply routing facts at commit time", () => {
+    const database = createTestDb();
+    const { user, instructor, course } = seedBaseData(database);
+    const replacement = database
+      .insert(users)
+      .values({
+        name: "Replacement Instructor",
+        email: "replacement@example.com",
+        role: UserRole.Instructor,
+      })
+      .returning()
+      .get();
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      database
+    ).source;
+    const reply = createDiscussionPost(
+      {
+        authorization: { userId: instructor.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: question.id,
+        body: "Answer",
+      },
+      database
+    ).source;
+    const captured = database
+      .select()
+      .from(notificationEvents)
+      .all()
+      .find((event) => event.sourceCommentId === reply.id)!;
+
+    database.delete(enrollments).where(eq(enrollments.userId, user.id)).run();
+    database
+      .update(users)
+      .set({ role: UserRole.Student })
+      .where(eq(users.id, instructor.id))
+      .run();
+    database
+      .update(courses)
+      .set({ instructorId: replacement.id })
+      .where(eq(courses.id, course.id))
+      .run();
+
+    expect(
+      database
+        .select()
+        .from(notificationEvents)
+        .all()
+        .find((event) => event.id === captured.id)
+    ).toEqual(captured);
+    expect(captured).toEqual(
+      expect.objectContaining({
+        actorId: instructor.id,
+        actorCapacity: "instructor",
+        recipientId: user.id,
+        courseId: course.id,
+        lessonId: lesson.id,
+        rootQuestionId: question.id,
+        sourceCommentId: reply.id,
+      })
+    );
+  });
+
+  test("rolls back a qualifying Reply and its Event when Delivery persistence fails", () => {
+    const database = createTestDb();
+    const { user, instructor, course } = seedBaseData(database);
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      database
+    ).source;
+    const before = {
+      comments: database.select().from(comments).all(),
+      events: database.select().from(notificationEvents).all(),
+      deliveries: database.select().from(notificationDeliveries).all(),
+    };
+
+    expect(() =>
+      createDiscussionPost(
+        {
+          authorization: { userId: instructor.id, courseId: course.id },
+          lessonId: lesson.id,
+          parentId: question.id,
+          body: "   ",
+        },
+        database
+      )
+    ).toThrow("Comment cannot be empty");
+    expect(database.select().from(comments).all()).toEqual(before.comments);
+    expect(database.select().from(notificationEvents).all()).toEqual(
+      before.events
+    );
+    expect(database.select().from(notificationDeliveries).all()).toEqual(
+      before.deliveries
+    );
+
+    database.$client.exec(`
+      CREATE TRIGGER reject_reply_delivery
+      BEFORE INSERT ON notification_deliveries
+      WHEN NEW.workflow_key = 'staff-reply-created'
+      BEGIN SELECT RAISE(ABORT, 'simulated reply delivery failure'); END;
+    `);
+
+    expect(() =>
+      createDiscussionPost(
+        {
+          authorization: { userId: instructor.id, courseId: course.id },
+          lessonId: lesson.id,
+          parentId: question.id,
+          body: "Rolled back answer",
+        },
+        database
+      )
+    ).toThrow("simulated reply delivery failure");
+    expect(database.select().from(comments).all()).toEqual(before.comments);
+    expect(database.select().from(notificationEvents).all()).toEqual(
+      before.events
+    );
+    expect(database.select().from(notificationDeliveries).all()).toEqual(
+      before.deliveries
+    );
+  });
+
+  test("edits, deletions, retries, and duplicate provider processing create nothing new", async () => {
+    const database = createTestDb();
+    const { user, instructor, course } = seedBaseData(database);
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const provider = new FakeKnockAdapter();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      database,
+      provider
+    ).source;
+    const reply = createDiscussionPost(
+      {
+        authorization: { userId: instructor.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: question.id,
+        body: "Answer",
+      },
+      database,
+      provider
+    ).source;
+    await provider.settled();
+    const before = {
+      events: database.select().from(notificationEvents).all(),
+      deliveries: database.select().from(notificationDeliveries).all(),
+    };
+    const replyDelivery = before.deliveries.find(
+      (delivery) =>
+        delivery.workflowKey === "staff-reply-created" &&
+        delivery.recipientId === user.id
+    )!;
+    const payload = JSON.parse(replyDelivery.providerPayload);
+
+    database
+      .update(comments)
+      .set({ body: "Edited answer", editedAt: "2026-11-23T12:00:00.000Z" })
+      .where(eq(comments.id, reply.id))
+      .run();
+    database
+      .update(comments)
+      .set({ deletedAt: "2026-11-23T12:01:00.000Z" })
+      .where(eq(comments.id, reply.id))
+      .run();
+    provider.trigger(replyDelivery.idempotencyKey, payload);
+    provider.trigger(replyDelivery.idempotencyKey, payload);
+
+    expect(database.select().from(notificationEvents).all()).toEqual(
+      before.events
+    );
+    expect(database.select().from(notificationDeliveries).all()).toEqual(
+      before.deliveries
+    );
+    expect(provider.list(user.id)).toHaveLength(1);
   });
 
   test("rolls back the Question and Event when Delivery persistence fails", () => {

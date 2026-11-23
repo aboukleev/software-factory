@@ -6,6 +6,8 @@ describe("FakeKnockAdapter", () => {
     const provider = new FakeKnockAdapter();
     provider.trigger("event:recipient:in_app", {
       eventIdentity: "question.created:42",
+      eventKind: "question.created",
+      actorCapacity: "student",
       occurredAt: "2026-11-23T12:00:00.000Z",
       sourceCommentId: 42,
       rootQuestionId: 42,
@@ -26,6 +28,8 @@ describe("FakeKnockAdapter", () => {
     const provider = new FakeKnockAdapter();
     const payload = {
       eventIdentity: "question.created:42",
+      eventKind: "question.created" as const,
+      actorCapacity: "student" as const,
       occurredAt: "2026-11-23T12:00:00.000Z",
       sourceCommentId: 42,
       rootQuestionId: 42,

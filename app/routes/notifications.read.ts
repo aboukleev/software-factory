@@ -37,6 +37,8 @@ export async function action({ request }: Route.ActionArgs) {
   if (!destination) throw data("Notification not found", { status: 404 });
 
   return redirect(
-    `/courses/${destination.slug}/lessons/${notification.lessonId}#question-${notification.rootQuestionId}`
+    `/courses/${destination.slug}/lessons/${notification.lessonId}#${
+      notification.eventKind === "staff-reply.created" ? "reply" : "question"
+    }-${notification.sourceCommentId}`
   );
 }
