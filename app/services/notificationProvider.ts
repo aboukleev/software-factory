@@ -1,5 +1,7 @@
-export type QuestionNotificationPayload = {
+export type NotificationPayload = {
   eventIdentity: string;
+  eventKind: "question.created" | "staff-reply.created";
+  actorCapacity: "student" | "instructor" | "platform_admin";
   occurredAt: string;
   sourceCommentId: number;
   rootQuestionId: number;
@@ -8,7 +10,7 @@ export type QuestionNotificationPayload = {
   lessonId: number;
 };
 
-export type ProviderNotification = QuestionNotificationPayload & {
+export type ProviderNotification = NotificationPayload & {
   id: string;
   idempotencyKey: string;
   readAt: string | null;
@@ -17,7 +19,7 @@ export type ProviderNotification = QuestionNotificationPayload & {
 export interface NotificationProvider {
   trigger(
     idempotencyKey: string,
-    payload: QuestionNotificationPayload
+    payload: NotificationPayload
   ): void | Promise<void>;
 }
 
@@ -26,7 +28,7 @@ export class FakeKnockAdapter implements NotificationProvider {
   private notifications = new Map<string, ProviderNotification>();
   private pending: Promise<void>[] = [];
 
-  trigger(idempotencyKey: string, payload: QuestionNotificationPayload) {
+  trigger(idempotencyKey: string, payload: NotificationPayload) {
     if (this.notifications.has(idempotencyKey)) return;
     this.notifications.set(idempotencyKey, {
       ...payload,
@@ -36,7 +38,7 @@ export class FakeKnockAdapter implements NotificationProvider {
     });
   }
 
-  schedule(idempotencyKey: string, payload: QuestionNotificationPayload) {
+  schedule(idempotencyKey: string, payload: NotificationPayload) {
     const work = Promise.resolve()
       .then(() => this.trigger(idempotencyKey, payload))
       .catch(() => undefined);
