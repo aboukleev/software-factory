@@ -45,6 +45,8 @@ interface SidebarProps {
     id: string;
     readAt: string | null;
     occurredAt: string;
+    eventKind: "question.created" | "staff-reply.created";
+    actorCapacity: "student" | "instructor" | "platform_admin";
     courseTitle: string;
     lessonTitle: string;
   }>;
@@ -125,6 +127,15 @@ export function Sidebar({
   const [feedOpen, setFeedOpen] = useState(false);
   const unreadCount = notificationFeed.filter((item) => !item.readAt).length;
 
+  function notificationWording(item: (typeof notificationFeed)[number]) {
+    if (item.eventKind === "question.created") {
+      return "A Student asked a Question.";
+    }
+    return item.actorCapacity === "platform_admin"
+      ? "A Platform Admin replied to your Question."
+      : "Your Instructor replied to your Question.";
+  }
+
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains("dark"));
   }, []);
@@ -198,7 +209,7 @@ export function Sidebar({
                         )}
                       >
                         <span className="block">
-                          A Student asked a Question.
+                          {notificationWording(item)}
                         </span>
                         <span className="block text-xs text-muted-foreground">
                           {item.courseTitle} · {item.lessonTitle}
