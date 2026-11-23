@@ -1,7 +1,23 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "~/db";
-import { comments, courses, lessons, modules } from "~/db/schema";
+import {
+  comments,
+  courses,
+  enrollments,
+  lessons,
+  modules,
+  notificationDeliveries,
+  notificationEvents,
+  users,
+  UserRole,
+} from "~/db/schema";
 import { MAX_COMMENT_LENGTH, MIN_COMMENT_LENGTH } from "~/lib/comments";
+import {
+  FakeKnockAdapter,
+  fakeKnockAdapter,
+  type NotificationProvider,
+  type QuestionNotificationPayload,
+} from "~/services/notificationProvider";
 
 type DiscussionDatabase = typeof db;
 
@@ -19,9 +35,13 @@ type CreateDiscussionPostInput = {
 
 export function createDiscussionPost(
   input: CreateDiscussionPostInput,
-  database: DiscussionDatabase = db
+  database: DiscussionDatabase = db,
+  provider: NotificationProvider = fakeKnockAdapter
 ) {
-  return database.transaction((tx) => {
+  let dispatch:
+    | { idempotencyKey: string; payload: QuestionNotificationPayload }
+    | undefined;
+  const result = database.transaction((tx) => {
     const trimmed = input.body.trim();
     if (trimmed.length < MIN_COMMENT_LENGTH) {
       throw new Error("Comment cannot be empty");
@@ -80,6 +100,83 @@ export function createDiscussionPost(
       .returning()
       .get();
 
+    if (input.parentId === null) {
+      const actor = tx
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.id, input.authorization.userId))
+        .get();
+      const enrollment = tx
+        .select({ id: enrollments.id })
+        .from(enrollments)
+        .where(
+          and(
+            eq(enrollments.userId, input.authorization.userId),
+            eq(enrollments.courseId, course.id)
+          )
+        )
+        .get();
+
+      if (
+        actor?.role === UserRole.Student &&
+        enrollment &&
+        input.authorization.userId !== course.instructorId
+      ) {
+        const identity = `question.created:${source.id}`;
+        const event = tx
+          .insert(notificationEvents)
+          .values({
+            identity,
+            kind: "question.created",
+            occurredAt: source.createdAt,
+            sourceCommentId: source.id,
+            rootQuestionId: source.id,
+            actorId: input.authorization.userId,
+            actorCapacity: "student",
+            recipientId: course.instructorId,
+            courseId: course.id,
+            lessonId: input.lessonId,
+          })
+          .returning()
+          .get();
+        const idempotencyKey = `${identity}:${course.instructorId}:in_app`;
+        const payload: QuestionNotificationPayload = {
+          eventIdentity: identity,
+          occurredAt: source.createdAt,
+          sourceCommentId: source.id,
+          rootQuestionId: source.id,
+          recipientId: course.instructorId,
+          courseId: course.id,
+          lessonId: input.lessonId,
+        };
+        tx.insert(notificationDeliveries)
+          .values({
+            notificationEventId: event.id,
+            recipientId: course.instructorId,
+            channel: "in_app",
+            workflowKey: "student-question-created",
+            idempotencyKey,
+            providerPayload: JSON.stringify(payload),
+            status: "queued",
+          })
+          .run();
+        dispatch = { idempotencyKey, payload };
+      }
+    }
+
     return { source, course };
   });
+
+  if (dispatch) {
+    if (provider instanceof FakeKnockAdapter) {
+      provider.schedule(dispatch.idempotencyKey, dispatch.payload);
+    } else {
+      void Promise.resolve()
+        .then(() =>
+          provider.trigger(dispatch!.idempotencyKey, dispatch!.payload)
+        )
+        .catch(() => undefined);
+    }
+  }
+  return result;
 }

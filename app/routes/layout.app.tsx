@@ -18,6 +18,29 @@ import {
   TeamMemberRole,
   LessonProgressStatus,
 } from "~/db/schema";
+import { fakeKnockAdapter } from "~/services/notificationProvider";
+
+function getNotificationFeed(userId: number) {
+  return fakeKnockAdapter.list(userId).flatMap((notification) => {
+    const context = db
+      .select({
+        courseTitle: courses.title,
+        courseSlug: courses.slug,
+        lessonTitle: lessons.title,
+      })
+      .from(lessons)
+      .innerJoin(modules, eq(lessons.moduleId, modules.id))
+      .innerJoin(courses, eq(modules.courseId, courses.id))
+      .where(
+        and(
+          eq(lessons.id, notification.lessonId),
+          eq(courses.id, notification.courseId)
+        )
+      )
+      .get();
+    return context ? [{ ...notification, ...context }] : [];
+  });
+}
 
 function getAllUsers() {
   return db.select().from(users).all();
@@ -185,7 +208,11 @@ export async function loader({ request }: Route.LoaderArgs) {
           course.courseId
         );
         const totalLessons = getTotalLessonCount(course.courseId);
-        const progress = calculateProgress(currentUserId, course.courseId, false);
+        const progress = calculateProgress(
+          currentUserId,
+          course.courseId,
+          false
+        );
         return {
           courseId: course.courseId,
           title: course.courseTitle,
@@ -213,6 +240,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     countryTierInfo,
     countries: COUNTRIES,
     isTeamAdmin: currentUserId ? isTeamAdmin(currentUserId) : false,
+    notificationFeed: currentUserId ? getNotificationFeed(currentUserId) : [],
   };
 }
 
@@ -225,6 +253,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     countryTierInfo,
     countries,
     isTeamAdmin: userIsTeamAdmin,
+    notificationFeed,
   } = loaderData;
 
   return (
@@ -233,6 +262,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
         currentUser={currentUser}
         recentCourses={recentCourses}
         isTeamAdmin={userIsTeamAdmin}
+        notificationFeed={notificationFeed}
       />
       <main className="flex-1 overflow-y-auto">
         <Outlet />
