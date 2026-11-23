@@ -18,29 +18,7 @@ import {
   TeamMemberRole,
   LessonProgressStatus,
 } from "~/db/schema";
-import { fakeKnockAdapter } from "~/services/notificationProvider";
-
-function getNotificationFeed(userId: number) {
-  return fakeKnockAdapter.list(userId).flatMap((notification) => {
-    const context = db
-      .select({
-        courseTitle: courses.title,
-        courseSlug: courses.slug,
-        lessonTitle: lessons.title,
-      })
-      .from(lessons)
-      .innerJoin(modules, eq(lessons.moduleId, modules.id))
-      .innerJoin(courses, eq(modules.courseId, courses.id))
-      .where(
-        and(
-          eq(lessons.id, notification.lessonId),
-          eq(courses.id, notification.courseId)
-        )
-      )
-      .get();
-    return context ? [{ ...notification, ...context }] : [];
-  });
-}
+import { getNotificationFeed } from "~/services/notificationFeed.server";
 
 function getAllUsers() {
   return db.select().from(users).all();

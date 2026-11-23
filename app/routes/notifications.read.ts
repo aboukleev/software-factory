@@ -1,44 +1,24 @@
-import { data, redirect } from "react-router";
-import { and, eq } from "drizzle-orm";
-import { db } from "~/db";
-import { courses, lessons, modules } from "~/db/schema";
+import { data } from "react-router";
 import { getCurrentUserId } from "~/lib/session";
 import { fakeKnockAdapter } from "~/services/notificationProvider";
+import { createNotificationReadService } from "~/services/notificationReadService";
 import type { Route } from "./+types/notifications.read";
+
+const notificationReads = createNotificationReadService(fakeKnockAdapter);
 
 export async function action({ request }: Route.ActionArgs) {
   const userId = await getCurrentUserId(request);
   if (!userId) throw data("You must be logged in", { status: 401 });
 
   const formData = await request.formData();
+  const intent = formData.get("intent");
   const notificationId = formData.get("notificationId");
-  if (typeof notificationId !== "string") {
-    throw data("Notification not found", { status: 404 });
-  }
-  const notification = fakeKnockAdapter
-    .list(userId)
-    .find((item) => item.id === notificationId);
-  if (!notification || !fakeKnockAdapter.markRead(userId, notificationId)) {
-    throw data("Notification not found", { status: 404 });
-  }
+  const result =
+    intent === "mark-all"
+      ? notificationReads.markAllRead(userId)
+      : intent === "mark-read" && typeof notificationId === "string"
+        ? notificationReads.markRead(userId, notificationId)
+        : { ok: false as const };
 
-  const destination = db
-    .select({ slug: courses.slug })
-    .from(lessons)
-    .innerJoin(modules, eq(lessons.moduleId, modules.id))
-    .innerJoin(courses, eq(modules.courseId, courses.id))
-    .where(
-      and(
-        eq(lessons.id, notification.lessonId),
-        eq(courses.id, notification.courseId)
-      )
-    )
-    .get();
-  if (!destination) throw data("Notification not found", { status: 404 });
-
-  return redirect(
-    `/courses/${destination.slug}/lessons/${notification.lessonId}#${
-      notification.eventKind === "staff-reply.created" ? "reply" : "question"
-    }-${notification.sourceCommentId}`
-  );
+  return Response.json({ ok: result.ok }, { status: result.ok ? 200 : 503 });
 }

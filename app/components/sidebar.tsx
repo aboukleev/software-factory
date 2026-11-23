@@ -4,6 +4,10 @@ import { cn } from "~/lib/utils";
 import { UserRole } from "~/db/schema";
 import { UserAvatar } from "~/components/user-avatar";
 import {
+  NotificationFeed,
+  type NotificationFeedItem,
+} from "~/components/notification-feed";
+import {
   BookOpen,
   ChartColumn,
   LayoutDashboard,
@@ -41,15 +45,7 @@ interface SidebarProps {
   currentUser: CurrentUser | null;
   recentCourses?: RecentCourse[];
   isTeamAdmin?: boolean;
-  notificationFeed?: Array<{
-    id: string;
-    readAt: string | null;
-    occurredAt: string;
-    eventKind: "question.created" | "staff-reply.created";
-    actorCapacity: "student" | "instructor" | "platform_admin";
-    courseTitle: string;
-    lessonTitle: string;
-  }>;
+  notificationFeed?: NotificationFeedItem[];
 }
 
 interface NavItem {
@@ -125,20 +121,18 @@ export function Sidebar({
   const currentUserRole = currentUser?.role ?? null;
   const [isDark, setIsDark] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
-  const unreadCount = notificationFeed.filter((item) => !item.readAt).length;
-
-  function notificationWording(item: (typeof notificationFeed)[number]) {
-    if (item.eventKind === "question.created") {
-      return "A Student asked a Question.";
-    }
-    return item.actorCapacity === "platform_admin"
-      ? "A Platform Admin replied to your Question."
-      : "Your Instructor replied to your Question.";
-  }
+  const authoritativeUnreadCount = notificationFeed.filter(
+    (item) => !item.readAt
+  ).length;
+  const [unreadCount, setUnreadCount] = useState(authoritativeUnreadCount);
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains("dark"));
   }, []);
+
+  useEffect(() => {
+    setUnreadCount(authoritativeUnreadCount);
+  }, [authoritativeUnreadCount]);
 
   function toggleDarkMode() {
     const next = !isDark;
@@ -179,53 +173,18 @@ export function Sidebar({
         {feedOpen && currentUser && (
           <section
             aria-label="Notification Feed"
-            className="absolute left-2 top-12 z-40 w-80 max-w-[calc(100vw-1rem)] rounded-md border bg-popover p-3 text-popover-foreground shadow-lg"
+            className="fixed inset-0 z-40 overflow-y-auto border bg-popover p-4 text-popover-foreground shadow-lg sm:absolute sm:inset-auto sm:left-2 sm:top-12 sm:w-80 sm:max-w-[calc(100vw-1rem)] sm:rounded-md sm:p-3"
           >
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="font-semibold">Notification Feed</h2>
-              <span className="text-xs text-muted-foreground">
-                {unreadCount} unread
-              </span>
-            </div>
-            {notificationFeed.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                New Questions and Replies will appear here.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {notificationFeed.map((item) => (
-                  <li key={item.id}>
-                    <Form method="post" action="/notifications/read">
-                      <input
-                        type="hidden"
-                        name="notificationId"
-                        value={item.id}
-                      />
-                      <button
-                        type="submit"
-                        className={cn(
-                          "w-full rounded-md border p-3 text-left text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2",
-                          !item.readAt && "font-semibold"
-                        )}
-                      >
-                        <span className="block">
-                          {notificationWording(item)}
-                        </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {item.courseTitle} · {item.lessonTitle}
-                        </span>
-                        <time
-                          dateTime={item.occurredAt}
-                          className="block text-xs text-muted-foreground"
-                        >
-                          {new Date(item.occurredAt).toLocaleString()}
-                        </time>
-                      </button>
-                    </Form>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <NotificationFeed
+              items={notificationFeed}
+              onUnreadCountChange={setUnreadCount}
+              onActivate={() => {
+                setUnreadCount((count) => Math.max(0, count - 1));
+                setFeedOpen(false);
+              }}
+              onReadFailure={() => setUnreadCount((count) => count + 1)}
+              onOpenFull={() => setFeedOpen(false)}
+            />
           </section>
         )}
       </div>
