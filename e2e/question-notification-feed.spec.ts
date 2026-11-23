@@ -120,3 +120,65 @@ test("explicit reads reconcile failures without blocking navigation", async ({
     page.getByRole("heading", { name: "Conversation unavailable" })
   ).toBeVisible();
 });
+
+test("an owning Instructor Reply reaches the Student and opens the exact Reply", async ({
+  page,
+}) => {
+  await page.goto("/courses/introduction-to-typescript/lessons/1");
+  await switchUser(page, "Emma Wilson");
+  const question = `Can my Instructor answer this? ${Date.now()}`;
+  const answer = `Instructor answer ${Date.now()}`;
+  await page
+    .getByPlaceholder("Ask a question or share what you found...")
+    .fill(question);
+  await page.getByRole("button", { name: "Post comment" }).click();
+  await switchUser(page, "Sarah Chen");
+  await page.goto("/instructor/questions");
+  const questionCard = page
+    .getByText(question)
+    .locator("xpath=ancestor::*[.//textarea][1]");
+  await questionCard.getByRole("textbox").fill(answer);
+  await questionCard.getByRole("button", { name: "Post reply" }).click();
+
+  await switchUser(page, "Emma Wilson");
+  await page
+    .getByRole("button", { name: /Notification Feed, \d+ unread/ })
+    .click();
+  await page
+    .getByRole("link", { name: /Your Instructor replied to your Question\./ })
+    .click();
+  await expect(page).toHaveURL(/#reply-\d+$/);
+  await expect(page.locator(new URL(page.url()).hash)).toContainText(answer);
+});
+
+test("a Platform Admin Reply uses Platform Admin wording for the Student", async ({
+  page,
+}) => {
+  await page.goto("/courses/introduction-to-typescript/lessons/1");
+  await switchUser(page, "Olivia Martinez");
+  const question = `Can Cadence answer this? ${Date.now()}`;
+  const answer = `Platform answer ${Date.now()}`;
+  await page
+    .getByPlaceholder("Ask a question or share what you found...")
+    .fill(question);
+  await page.getByRole("button", { name: "Post comment" }).click();
+  await switchUser(page, "Alex Rivera");
+  await page.goto("/instructor/questions");
+  const questionCard = page
+    .getByText(question)
+    .locator("xpath=ancestor::*[.//textarea][1]");
+  await questionCard.getByRole("textbox").fill(answer);
+  await questionCard.getByRole("button", { name: "Post reply" }).click();
+
+  await switchUser(page, "Olivia Martinez");
+  await page
+    .getByRole("button", { name: /Notification Feed, \d+ unread/ })
+    .click();
+  await page
+    .getByRole("link", {
+      name: /A Platform Admin replied to your Question\./,
+    })
+    .click();
+  await expect(page).toHaveURL(/#reply-\d+$/);
+  await expect(page.locator(new URL(page.url()).hash)).toContainText(answer);
+});

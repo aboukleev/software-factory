@@ -6,11 +6,22 @@ export type NotificationFeedItem = {
   id: string;
   readAt: string | null;
   occurredAt: string;
+  eventKind: "question.created" | "staff-reply.created";
+  actorCapacity: "student" | "instructor" | "platform_admin";
   courseTitle: string;
   lessonTitle: string;
   destinationUrl: string;
   destinationAvailable: boolean;
 };
+
+function notificationWording(item: NotificationFeedItem) {
+  if (item.eventKind === "question.created") {
+    return "A Student asked a Question.";
+  }
+  return item.actorCapacity === "platform_admin"
+    ? "A Platform Admin replied to your Question."
+    : "Your Instructor replied to your Question.";
+}
 
 type Props = {
   items: NotificationFeedItem[];
@@ -132,6 +143,7 @@ export function NotificationFeed({
         ) : (
           <ul className="space-y-2">
             {items.map((item) => {
+              const wording = notificationWording(item);
               const isUnread =
                 !optimisticAll && !item.readAt && !optimisticRead.has(item.id);
               return (
@@ -139,13 +151,13 @@ export function NotificationFeed({
                   <Link
                     to={item.destinationUrl}
                     onClick={() => markItemRead(item.id, isUnread)}
-                    aria-label={`${isUnread ? "Unread. " : ""}A Student asked a Question. ${item.courseTitle}. ${item.lessonTitle}. ${new Date(item.occurredAt).toLocaleString()}`}
+                    aria-label={`${isUnread ? "Unread. " : ""}${wording} ${item.courseTitle}. ${item.lessonTitle}. ${new Date(item.occurredAt).toLocaleString()}`}
                     className={cn(
                       "block w-full rounded-md border p-3 text-left text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2",
                       isUnread && "font-semibold"
                     )}
                   >
-                    <span className="block">A Student asked a Question.</span>
+                    <span className="block">{wording}</span>
                     <span className="block text-xs text-muted-foreground">
                       {item.courseTitle} · {item.lessonTitle}
                     </span>

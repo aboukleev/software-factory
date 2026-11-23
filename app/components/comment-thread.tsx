@@ -231,7 +231,7 @@ function CommentItem({
 
   return (
     <div
-      id={`question-${comment.id}`}
+      id={`${isReply ? "reply" : "question"}-${comment.id}`}
       tabIndex={-1}
       className={cn(
         "py-3 target:rounded-md target:bg-primary/10 target:outline target:outline-2 target:outline-primary",

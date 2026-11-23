@@ -359,7 +359,9 @@ export const notificationEvents = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     identity: text("identity").notNull(),
-    kind: text("kind").notNull().$type<"question.created">(),
+    kind: text("kind")
+      .notNull()
+      .$type<"question.created" | "staff-reply.created">(),
     occurredAt: text("occurred_at").notNull(),
     sourceCommentId: integer("source_comment_id")
       .notNull()
@@ -370,7 +372,9 @@ export const notificationEvents = sqliteTable(
     actorId: integer("actor_id")
       .notNull()
       .references(() => users.id),
-    actorCapacity: text("actor_capacity").notNull().$type<"student">(),
+    actorCapacity: text("actor_capacity")
+      .notNull()
+      .$type<"student" | "instructor" | "platform_admin">(),
     recipientId: integer("recipient_id")
       .notNull()
       .references(() => users.id),

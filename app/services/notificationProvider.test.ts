@@ -6,6 +6,8 @@ describe("FakeKnockAdapter", () => {
     const provider = new FakeKnockAdapter();
     provider.trigger("event:recipient:in_app", {
       eventIdentity: "question.created:42",
+      eventKind: "question.created",
+      actorCapacity: "student",
       occurredAt: "2026-11-23T12:00:00.000Z",
       sourceCommentId: 42,
       rootQuestionId: 42,
@@ -26,6 +28,8 @@ describe("FakeKnockAdapter", () => {
     const provider = new FakeKnockAdapter();
     const payload = {
       eventIdentity: "question.created:42",
+      eventKind: "question.created" as const,
+      actorCapacity: "student" as const,
       occurredAt: "2026-11-23T12:00:00.000Z",
       sourceCommentId: 42,
       rootQuestionId: 42,
@@ -48,6 +52,8 @@ describe("FakeKnockAdapter", () => {
     ] as const) {
       provider.trigger(id, {
         eventIdentity: `question.created:${id}`,
+        eventKind: "question.created",
+        actorCapacity: "student",
         occurredAt,
         sourceCommentId: id === "old" ? 41 : 42,
         rootQuestionId: id === "old" ? 41 : 42,
@@ -73,6 +79,8 @@ describe("FakeKnockAdapter", () => {
     const provider = new FakeKnockAdapter();
     const notification = (id: number, occurredAt: string) => ({
       eventIdentity: `question.created:${id}`,
+      eventKind: "question.created" as const,
+      actorCapacity: "student" as const,
       occurredAt,
       sourceCommentId: id,
       rootQuestionId: id,
@@ -97,6 +105,8 @@ describe("FakeKnockAdapter", () => {
     const provider = new FakeKnockAdapter();
     provider.trigger("one", {
       eventIdentity: "question.created:1",
+      eventKind: "question.created",
+      actorCapacity: "student",
       occurredAt: "2026-11-23T12:00:00.000Z",
       sourceCommentId: 1,
       rootQuestionId: 1,
@@ -119,6 +129,8 @@ describe("FakeKnockAdapter", () => {
     for (const recipientId of [7, 8]) {
       provider.trigger(`same-event:${recipientId}`, {
         eventIdentity: "question.created:42",
+        eventKind: "question.created",
+        actorCapacity: "student",
         occurredAt: "2026-11-23T12:00:00.000Z",
         sourceCommentId: 42,
         rootQuestionId: 42,
@@ -129,6 +141,8 @@ describe("FakeKnockAdapter", () => {
     }
     provider.trigger("newer", {
       eventIdentity: "question.created:43",
+      eventKind: "question.created",
+      actorCapacity: "student",
       occurredAt: "2026-11-23T13:00:00.000Z",
       sourceCommentId: 43,
       rootQuestionId: 43,

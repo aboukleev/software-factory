@@ -27,7 +27,11 @@ export function getNotificationFeed(userId: number) {
       courseTitle: context?.courseTitle ?? "Details unavailable",
       lessonTitle: context?.lessonTitle ?? "Conversation unavailable",
       destinationUrl: context
-        ? `/courses/${context.courseSlug}/lessons/${notification.lessonId}#question-${notification.rootQuestionId}`
+        ? `/courses/${context.courseSlug}/lessons/${notification.lessonId}#${
+            notification.eventKind === "staff-reply.created"
+              ? "reply"
+              : "question"
+          }-${notification.sourceCommentId}`
         : "/notifications/unavailable",
       destinationAvailable: Boolean(context),
     };
