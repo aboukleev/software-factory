@@ -8,7 +8,10 @@ async function switchUser(page: import("@playwright/test").Page, name: string) {
     await page.getByRole("button", { name: "Switch user" }).click();
   }
   await userButton.click();
-  await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
+  const currentUser = page
+    .getByText("Current user", { exact: true })
+    .locator("xpath=following-sibling::div[1]");
+  await expect(currentUser.getByText(name, { exact: true })).toBeVisible();
 }
 
 test("an enrolled Student Question reaches the owning Instructor", async ({
