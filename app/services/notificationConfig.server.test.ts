@@ -49,4 +49,24 @@ describe("Notification provider configuration", () => {
       feedChannelId: "7e3c3b9d-a2df-4a6b-b71d-b49ef68203dc",
     });
   });
+
+  test("decodes Knock's single-line base64 signing key format", () => {
+    const signingKey = [
+      "-----BEGIN PRIVATE KEY-----",
+      "test-key-material",
+      "-----END PRIVATE KEY-----",
+      "",
+    ].join("\n");
+
+    expect(
+      loadNotificationConfig({
+        NODE_ENV: "development",
+        NOTIFICATION_PROVIDER_MODE: "knock",
+        KNOCK_SECRET_API_KEY: "sk_test_secret",
+        KNOCK_PUBLIC_API_KEY: "pk_test_public",
+        KNOCK_SIGNING_KEY: Buffer.from(signingKey).toString("base64"),
+        KNOCK_FEED_CHANNEL_ID: "7e3c3b9d-a2df-4a6b-b71d-b49ef68203dc",
+      })
+    ).toMatchObject({ signingKey });
+  });
 });

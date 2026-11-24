@@ -16,7 +16,9 @@ beforeEach(() => {
   vi.stubEnv("KNOCK_PUBLIC_API_KEY", "pk_test_public");
   vi.stubEnv(
     "KNOCK_SIGNING_KEY",
-    privateKey.export({ type: "pkcs8", format: "pem" }).toString()
+    Buffer.from(
+      privateKey.export({ type: "pkcs8", format: "pem" }).toString()
+    ).toString("base64")
   );
   vi.stubEnv("KNOCK_FEED_CHANNEL_ID", "7e3c3b9d-a2df-4a6b-b71d-b49ef68203dc");
 });

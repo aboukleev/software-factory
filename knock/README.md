@@ -17,6 +17,9 @@ KNOCK_FEED_CHANNEL_ID=... \
 npm run test:knock-contract
 ```
 
+`KNOCK_SIGNING_KEY` accepts Knock's recommended single-line base64-encoded PEM
+format as well as raw PEM and PEM with escaped newlines.
+
 Before running it, push and commit both workflows to the isolated Knock
 Development environment, apply `feed-response-filter.json` to that environment's
 in-app channel API response filter, and enable enhanced security. The contract

@@ -17,6 +17,14 @@ const REQUIRED_KNOCK_ENVIRONMENT = [
   "KNOCK_FEED_CHANNEL_ID",
 ] as const;
 
+function normalizeSigningKey(value: string) {
+  const expanded = value.replaceAll("\\n", "\n");
+  if (expanded.startsWith("-----BEGIN ")) return expanded;
+
+  const decoded = Buffer.from(value, "base64").toString("utf8");
+  return decoded.startsWith("-----BEGIN ") ? decoded : expanded;
+}
+
 export function loadNotificationConfig(
   environment: NotificationEnvironment = process.env
 ): NotificationConfig {
@@ -58,7 +66,7 @@ export function loadNotificationConfig(
     mode: "knock",
     secretApiKey,
     publicApiKey,
-    signingKey: signingKey.replaceAll("\\n", "\n"),
+    signingKey: normalizeSigningKey(signingKey),
     feedChannelId,
   };
 }
