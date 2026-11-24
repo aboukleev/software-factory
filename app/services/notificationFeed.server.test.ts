@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   comments,
+  courses,
   enrollments,
   lessons,
   modules,
@@ -48,6 +49,11 @@ describe("Notification Feed enrichment", () => {
     );
     await provider.settled();
     database
+      .update(courses)
+      .set({ title: "Renamed course" })
+      .where(eq(courses.id, course.id))
+      .run();
+    database
       .update(lessons)
       .set({ title: "Renamed lesson" })
       .where(eq(lessons.id, lesson.id))
@@ -63,7 +69,7 @@ describe("Notification Feed enrichment", () => {
     );
 
     expect(item).toMatchObject({
-      courseTitle: "Test Course",
+      courseTitle: "Renamed course",
       lessonTitle: "Renamed lesson",
       preview: "Edited Question at",
       destinationUrl: `/courses/test-course/lessons/${lesson.id}#question-${result.source.id}`,
