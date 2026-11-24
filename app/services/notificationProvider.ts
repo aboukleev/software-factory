@@ -1,14 +1,31 @@
-export type NotificationPayload = {
-  eventIdentity: string;
-  eventKind: "question.created" | "staff-reply.created";
-  actorCapacity: "student" | "instructor" | "platform_admin";
-  occurredAt: string;
-  sourceCommentId: number;
-  rootQuestionId: number;
-  recipientId: number;
-  courseId: number;
-  lessonId: number;
-};
+import { z } from "zod";
+
+export const notificationPayloadSchema = z
+  .object({
+    eventIdentity: z.string().min(1).max(255),
+    eventKind: z.enum(["question.created", "staff-reply.created"]),
+    occurredAt: z.string().datetime({ offset: true }),
+    sourceCommentId: z.number().int().positive(),
+    rootQuestionId: z.number().int().positive(),
+    recipientId: z.number().int().positive(),
+    courseId: z.number().int().positive(),
+    lessonId: z.number().int().positive(),
+  })
+  .strict()
+  .superRefine((payload, context) => {
+    if (
+      payload.eventIdentity !==
+      `${payload.eventKind}:${payload.sourceCommentId}`
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["eventIdentity"],
+        message: "must be derived from the event kind and source comment",
+      });
+    }
+  });
+
+export type NotificationPayload = z.infer<typeof notificationPayloadSchema>;
 
 export type ProviderNotification = NotificationPayload & {
   id: string;
@@ -20,7 +37,73 @@ export interface NotificationProvider {
   trigger(
     idempotencyKey: string,
     payload: NotificationPayload
-  ): void | Promise<void>;
+  ): void | Promise<void | ProviderTriggerResult>;
+}
+
+export type ProviderTriggerResult = {
+  workflowRunId: string;
+  requestId: string | null;
+};
+
+const WORKFLOW_KEYS = {
+  "question.created": "student-question-created",
+  "staff-reply.created": "staff-reply-created",
+} as const;
+
+type KnockNotificationProviderOptions = {
+  secretApiKey: string;
+  request?: typeof fetch;
+  apiBaseUrl?: string;
+};
+
+export class KnockNotificationProvider implements NotificationProvider {
+  private readonly secretApiKey: string;
+  private readonly request: typeof fetch;
+  private readonly apiBaseUrl: string;
+
+  constructor({
+    secretApiKey,
+    request = fetch,
+    apiBaseUrl = "https://api.knock.app/v1",
+  }: KnockNotificationProviderOptions) {
+    this.secretApiKey = secretApiKey;
+    this.request = request;
+    this.apiBaseUrl = apiBaseUrl.replace(/\/$/, "");
+  }
+
+  async trigger(idempotencyKey: string, untrustedPayload: NotificationPayload) {
+    if (idempotencyKey.length === 0 || idempotencyKey.length > 255) {
+      throw new Error("Knock idempotency keys must contain 1 to 255 characters");
+    }
+    const payload = notificationPayloadSchema.parse(untrustedPayload);
+    const workflowKey = WORKFLOW_KEYS[payload.eventKind];
+    const response = await this.request(
+      `${this.apiBaseUrl}/workflows/${workflowKey}/trigger`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.secretApiKey}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({
+          recipients: [String(payload.recipientId)],
+          data: payload,
+        }),
+      }
+    );
+    const requestId = response.headers.get("x-request-id");
+    if (!response.ok) {
+      throw new Error(
+        `Knock trigger failed (status ${response.status}, request ${requestId ?? "unknown"})`
+      );
+    }
+    const result = z
+      .object({ workflow_run_id: z.string().min(1) })
+      .passthrough()
+      .parse(await response.json());
+    return { workflowRunId: result.workflow_run_id, requestId };
+  }
 }
 
 export type NotificationPage = {

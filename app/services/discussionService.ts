@@ -14,10 +14,10 @@ import {
 import { MAX_COMMENT_LENGTH, MIN_COMMENT_LENGTH } from "~/lib/comments";
 import {
   FakeKnockAdapter,
-  fakeKnockAdapter,
   type NotificationProvider,
   type NotificationPayload,
 } from "~/services/notificationProvider";
+import { notificationProvider } from "~/services/notificationProvider.server";
 
 type DiscussionDatabase = typeof db;
 
@@ -36,7 +36,7 @@ type CreateDiscussionPostInput = {
 export function createDiscussionPost(
   input: CreateDiscussionPostInput,
   database: DiscussionDatabase = db,
-  provider: NotificationProvider = fakeKnockAdapter
+  provider: NotificationProvider = notificationProvider
 ) {
   let dispatch:
     { idempotencyKey: string; payload: NotificationPayload } | undefined;
@@ -143,7 +143,6 @@ export function createDiscussionPost(
         const payload: NotificationPayload = {
           eventIdentity: identity,
           eventKind: "question.created",
-          actorCapacity: "student",
           occurredAt: source.createdAt,
           sourceCommentId: source.id,
           rootQuestionId: source.id,
@@ -212,7 +211,6 @@ export function createDiscussionPost(
           const payload: NotificationPayload = {
             eventIdentity: identity,
             eventKind: "staff-reply.created",
-            actorCapacity,
             occurredAt: source.createdAt,
             sourceCommentId: source.id,
             rootQuestionId: parent.id,

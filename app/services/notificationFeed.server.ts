@@ -1,10 +1,15 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "~/db";
-import { courses, lessons, modules } from "~/db/schema";
+import { courses, lessons, modules, notificationEvents } from "~/db/schema";
 import { fakeKnockAdapter } from "~/services/notificationProvider";
 
 export function getNotificationFeed(userId: number) {
   return fakeKnockAdapter.list(userId).map((notification) => {
+    const event = db
+      .select({ actorCapacity: notificationEvents.actorCapacity })
+      .from(notificationEvents)
+      .where(eq(notificationEvents.identity, notification.eventIdentity))
+      .get();
     const context = db
       .select({
         courseTitle: courses.title,
@@ -24,6 +29,11 @@ export function getNotificationFeed(userId: number) {
 
     return {
       ...notification,
+      actorCapacity:
+        event?.actorCapacity ??
+        (notification.eventKind === "question.created"
+          ? "student"
+          : "instructor"),
       courseTitle: context?.courseTitle ?? "Details unavailable",
       lessonTitle: context?.lessonTitle ?? "Conversation unavailable",
       destinationUrl: context
