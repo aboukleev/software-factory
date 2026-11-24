@@ -2047,7 +2047,6 @@ This course is still in draft while the cluster examples are rewritten against t
       providerPayload: JSON.stringify({
         eventIdentity: seededNotificationIdentity,
         eventKind: "question.created",
-        actorCapacity: "student",
         occurredAt: c1q1.createdAt,
         sourceCommentId: c1q1.id,
         rootQuestionId: c1q1.id,
