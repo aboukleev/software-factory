@@ -61,7 +61,7 @@ export class FakeKnockAdapter implements NotificationProvider {
   list(recipientId: number) {
     return [...this.notifications.values()]
       .filter((item) => item.recipientId === recipientId)
-      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+      .reverse();
   }
 
   listPage(

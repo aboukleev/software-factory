@@ -75,6 +75,41 @@ describe("FakeKnockAdapter", () => {
     });
   });
 
+  test("provider order is authoritative even when a delayed Notification has an older occurrence time", () => {
+    const provider = new FakeKnockAdapter();
+    const notification = (id: number, occurredAt: string) => ({
+      eventIdentity: `question.created:${id}`,
+      eventKind: "question.created" as const,
+      actorCapacity: "student" as const,
+      occurredAt,
+      sourceCommentId: id,
+      rootQuestionId: id,
+      recipientId: 7,
+      courseId: 3,
+      lessonId: 9,
+    });
+
+    provider.trigger(
+      "already-present",
+      notification(1, "2026-11-23T12:00:00.000Z")
+    );
+    provider.trigger("delayed", notification(2, "2026-11-22T09:00:00.000Z"));
+
+    expect(provider.listPage(7, { pageSize: 1 })).toMatchObject({
+      items: [
+        {
+          id: "delayed",
+          occurredAt: "2026-11-22T09:00:00.000Z",
+        },
+      ],
+      nextCursor: "1",
+    });
+    expect(provider.listPage(7, { cursor: "1", pageSize: 1 })).toMatchObject({
+      items: [{ id: "already-present" }],
+      nextCursor: null,
+    });
+  });
+
   test("Mark all read includes unloaded Notifications but not a racing later arrival", () => {
     const provider = new FakeKnockAdapter();
     const notification = (id: number, occurredAt: string) => ({

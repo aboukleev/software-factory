@@ -18,7 +18,7 @@ import {
   TeamMemberRole,
   LessonProgressStatus,
 } from "~/db/schema";
-import { getNotificationFeed } from "~/services/notificationFeed.server";
+import { getNotificationFeedPage } from "~/services/notificationFeed.server";
 
 function getAllUsers() {
   return db.select().from(users).all();
@@ -218,7 +218,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     countryTierInfo,
     countries: COUNTRIES,
     isTeamAdmin: currentUserId ? isTeamAdmin(currentUserId) : false,
-    notificationFeed: currentUserId ? getNotificationFeed(currentUserId) : [],
+    notificationFeed: currentUserId
+      ? getNotificationFeedPage(currentUserId)
+      : { items: [], unreadCount: 0, nextCursor: null },
   };
 }
 

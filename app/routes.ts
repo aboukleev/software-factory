@@ -45,6 +45,7 @@ export default [
     route("admin/categories", "routes/admin.categories.tsx"),
     route("settings", "routes/settings.tsx"),
     route("notifications", "routes/notifications.tsx"),
+    route("notifications/feed", "routes/notifications.feed.ts"),
     route("notifications/read", "routes/notifications.read.ts"),
     route("notifications/unavailable", "routes/notifications.unavailable.tsx"),
     route("team", "routes/team.tsx"),
