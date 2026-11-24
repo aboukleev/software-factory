@@ -1,0 +1,252 @@
+import { setTimeout as wait } from "node:timers/promises";
+import Knock from "@knocklabs/client";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { z } from "zod";
+import { loadNotificationConfig } from "../app/services/notificationConfig.server";
+import {
+  KnockNotificationProvider,
+  type NotificationPayload,
+} from "../app/services/notificationProvider";
+import { createKnockUserToken } from "../app/services/notificationSecurity.server";
+
+function loadContractConfig() {
+  const loaded = loadNotificationConfig();
+  if (loaded.mode !== "knock") {
+    throw new Error(
+      "Knock Development contract requires NOTIFICATION_PROVIDER_MODE=knock"
+    );
+  }
+  return loaded;
+}
+const config = loadContractConfig();
+
+const apiBaseUrl = "https://api.knock.app/v1";
+const userToken = createKnockUserToken(
+  Number.MAX_SAFE_INTEGER - Math.floor(Math.random() * 1_000_000),
+  config.signingKey
+);
+// The token subject must equal the disposable Knock User ID. Contract IDs are
+// therefore numeric strings, just like production Cadence person identifiers.
+const tokenPayload = JSON.parse(
+  Buffer.from(userToken.split(".")[1] ?? "", "base64url").toString("utf8")
+) as { sub?: string };
+const stableRecipientId = tokenPayload.sub;
+if (!stableRecipientId) throw new Error("Contract token has no subject");
+
+const publicHeaders = {
+  Authorization: `Bearer ${config.publicApiKey}`,
+  "X-Knock-User-Token": userToken,
+  "Content-Type": "application/json",
+};
+const secretHeaders = {
+  Authorization: `Bearer ${config.secretApiKey}`,
+  "Content-Type": "application/json",
+};
+
+const feedSchema = z.object({
+  entries: z.array(
+    z
+      .object({
+        id: z.string().min(1),
+        data: z.record(z.string(), z.unknown()),
+        actors: z.array(z.unknown()).optional(),
+        read_at: z.string().nullable().optional(),
+        source: z.object({
+          key: z.string(),
+          version_id: z.string().min(1),
+        }),
+      })
+      .passthrough()
+  ),
+  meta: z.object({
+    unread_count: z.number(),
+    total_count: z.number(),
+  }),
+  page_info: z.object({
+    after: z.string().nullable().optional(),
+  }),
+});
+
+async function readJson(response: Response) {
+  const body = (await response.json()) as unknown;
+  if (!response.ok) {
+    throw new Error(`Knock API failed with status ${response.status}`);
+  }
+  return body;
+}
+
+async function getFeed(after?: string) {
+  const query = new URLSearchParams({ mode: "compact", page_size: "1" });
+  if (after) query.set("after", after);
+  const response = await fetch(
+    `${apiBaseUrl}/users/${stableRecipientId}/feeds/${config.feedChannelId}?${query}`,
+    { headers: publicHeaders }
+  );
+  return feedSchema.parse(await readJson(response));
+}
+
+async function waitForFeedCount(count: number) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const feed = await getFeed();
+    if (feed.meta.total_count >= count) return feed;
+    await wait(500);
+  }
+  throw new Error(`Timed out waiting for ${count} Knock Feed items`);
+}
+
+function payload(
+  eventKind: NotificationPayload["eventKind"],
+  sourceCommentId: number
+): NotificationPayload {
+  return {
+    eventIdentity: `${eventKind}:${sourceCommentId}`,
+    eventKind,
+    occurredAt: new Date().toISOString(),
+    sourceCommentId,
+    rootQuestionId:
+      eventKind === "question.created" ? sourceCommentId : sourceCommentId - 1,
+    recipientId: Number(stableRecipientId),
+    courseId: 1,
+    lessonId: 1,
+  };
+}
+
+const knock = new Knock(config.publicApiKey);
+const feed = knock.feeds.initialize(config.feedChannelId, {
+  page_size: 1,
+  mode: "compact",
+});
+
+beforeAll(async () => {
+  knock.authenticate({ id: stableRecipientId }, userToken, {
+    identificationStrategy: "skip",
+  });
+  feed.listenForUpdates();
+  await wait(750);
+});
+
+afterAll(async () => {
+  feed.dispose();
+  knock.logout();
+  const response = await fetch(`${apiBaseUrl}/users/${stableRecipientId}`, {
+    method: "DELETE",
+    headers: secretHeaders,
+  });
+  if (!response.ok && response.status !== 404) {
+    throw new Error(
+      `Could not clean disposable Knock recipient (status ${response.status})`
+    );
+  }
+});
+
+describe("Knock Development security contract", () => {
+  test("requires enhanced-security tokens and exercises the complete Feed contract", async () => {
+    const unsignedResponse = await fetch(
+      `${apiBaseUrl}/users/${stableRecipientId}/feeds/${config.feedChannelId}`,
+      { headers: { Authorization: `Bearer ${config.publicApiKey}` } }
+    );
+    expect([401, 403]).toContain(unsignedResponse.status);
+
+    const decodedToken = JSON.parse(
+      Buffer.from(userToken.split(".")[1] ?? "", "base64url").toString("utf8")
+    ) as Record<string, unknown>;
+    expect(decodedToken).toMatchObject({
+      sub: stableRecipientId,
+      explicit_grants: true,
+      grants: {
+        [`https://api.knock.app/v1/users/${stableRecipientId}`]: {
+          "user/feed_read": [{}],
+          "user/feed_write": [{}],
+        },
+      },
+    });
+
+    let hintResolve: ((value: unknown) => void) | undefined;
+    const hint = new Promise((resolve) => {
+      hintResolve = resolve;
+    });
+    feed.on("messages.new", (response: unknown) => hintResolve?.(response));
+
+    const provider = new KnockNotificationProvider({
+      secretApiKey: config.secretApiKey,
+    });
+    const firstIdentity = `question.created:${Date.now()}`;
+    const firstPayload = payload(
+      "question.created",
+      Number(firstIdentity.split(":")[1])
+    );
+    const firstKey = `${firstIdentity}:${stableRecipientId}:in_app`;
+    const firstResult = await provider.trigger(firstKey, firstPayload);
+    const duplicateResult = await provider.trigger(firstKey, firstPayload);
+    expect(duplicateResult.workflowRunId).toBe(firstResult.workflowRunId);
+    expect(firstResult.requestId).toEqual(expect.any(String));
+
+    await expect(
+      Promise.race([
+        hint,
+        wait(15_000).then(() => {
+          throw new Error("No Knock real-time new-message hint received");
+        }),
+      ])
+    ).resolves.toBeDefined();
+
+    const secondSourceId = Number(firstIdentity.split(":")[1]) + 2;
+    const secondResult = await provider.trigger(
+      `staff-reply.created:${secondSourceId}:${stableRecipientId}:in_app`,
+      payload("staff-reply.created", secondSourceId)
+    );
+    expect(secondResult.workflowRunId).toEqual(expect.any(String));
+
+    const firstPage = await waitForFeedCount(2);
+    expect(firstPage.entries).toHaveLength(1);
+    const cursor = firstPage.page_info.after;
+    expect(cursor).toEqual(expect.any(String));
+    if (!cursor) throw new Error("Expected a cursor for the second Feed page");
+    const secondPage = await getFeed(cursor);
+    expect(secondPage.entries).toHaveLength(1);
+
+    const items = [...firstPage.entries, ...secondPage.entries];
+    const approvedData = [
+      "courseId",
+      "eventIdentity",
+      "eventKind",
+      "lessonId",
+      "occurredAt",
+      "recipientId",
+      "rootQuestionId",
+      "sourceCommentId",
+    ];
+    for (const item of items) {
+      expect(Object.keys(item.data).sort()).toEqual(approvedData);
+      expect(item.actors ?? []).toEqual([]);
+      expect(JSON.stringify(item)).not.toMatch(
+        /email|avatar|actorId|name|preview|title|slug|authorization/i
+      );
+      expect(item.source.version_id).toEqual(expect.any(String));
+    }
+
+    const message = firstPage.entries[0];
+    if (!message) throw new Error("Expected a Feed message");
+    await readJson(
+      await fetch(`${apiBaseUrl}/messages/${message.id}/read`, {
+        method: "PUT",
+        headers: publicHeaders,
+      })
+    );
+    const readFeed = await getFeed();
+    expect(
+      readFeed.entries.find((entry) => entry.id === message.id)?.read_at
+    ).toEqual(expect.any(String));
+
+    await readJson(
+      await fetch(`${apiBaseUrl}/messages/${message.id}/archived`, {
+        method: "PUT",
+        headers: publicHeaders,
+      })
+    );
+    const afterArchive = await waitForFeedCount(1);
+    expect(afterArchive.entries.some((entry) => entry.id === message.id)).toBe(
+      false
+    );
+  });
+});

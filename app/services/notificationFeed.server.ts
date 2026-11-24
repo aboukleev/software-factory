@@ -22,8 +22,10 @@ type AuthorizationCheck = (
   recipientId: number,
   courseId: number
 ) => boolean | Promise<boolean>;
+type ActorCapacity = "student" | "instructor" | "platform_admin";
 
 export type EnrichedNotification = ProviderNotification & {
+  actorCapacity: ActorCapacity;
   availability: "available" | "unavailable" | "temporary_failure";
   courseTitle: string | null;
   lessonTitle: string | null;
@@ -113,9 +115,21 @@ function safePreview(markdown: string): string | null {
   return `${(boundary > 0 ? candidate.slice(0, boundary) : candidate).trimEnd()}…`;
 }
 
-function unavailable(notification: ProviderNotification): EnrichedNotification {
+function fallbackActorCapacity(
+  notification: ProviderNotification
+): ActorCapacity {
+  return notification.eventKind === "question.created"
+    ? "student"
+    : "instructor";
+}
+
+function unavailable(
+  notification: ProviderNotification,
+  actorCapacity = fallbackActorCapacity(notification)
+): EnrichedNotification {
   return {
     ...notification,
+    actorCapacity,
     availability: "unavailable",
     courseTitle: null,
     lessonTitle: null,
@@ -126,10 +140,12 @@ function unavailable(notification: ProviderNotification): EnrichedNotification {
 }
 
 function temporaryFailure(
-  notification: ProviderNotification
+  notification: ProviderNotification,
+  actorCapacity = fallbackActorCapacity(notification)
 ): EnrichedNotification {
   return {
     ...notification,
+    actorCapacity,
     availability: "temporary_failure",
     courseTitle: null,
     lessonTitle: null,
@@ -148,6 +164,7 @@ export function createNotificationFeedService(
     async list(recipientId: number): Promise<EnrichedNotification[]> {
       return Promise.all(
         provider.list(recipientId).map(async (notification) => {
+          let actorCapacity = fallbackActorCapacity(notification);
           try {
             const context = database
               .select({
@@ -183,11 +200,11 @@ export function createNotificationFeedService(
                 )
               )
               .get();
+            actorCapacity = context?.eventActorCapacity ?? actorCapacity;
 
             const valid =
               context &&
               context.eventKind === notification.eventKind &&
-              context.eventActorCapacity === notification.actorCapacity &&
               context.eventOccurredAt === notification.occurredAt &&
               context.eventRecipientId === recipientId &&
               context.eventRecipientId === notification.recipientId &&
@@ -205,7 +222,7 @@ export function createNotificationFeedService(
               !valid ||
               !(await canAccess(recipientId, notification.courseId))
             ) {
-              return unavailable(notification);
+              return unavailable(notification, actorCapacity);
             }
 
             const anchor =
@@ -214,6 +231,7 @@ export function createNotificationFeedService(
                 : "question";
             return {
               ...notification,
+              actorCapacity,
               availability: "available" as const,
               courseTitle: context.courseTitle,
               lessonTitle: context.lessonTitle,
@@ -222,7 +240,7 @@ export function createNotificationFeedService(
               destinationAvailable: true,
             };
           } catch {
-            return temporaryFailure(notification);
+            return temporaryFailure(notification, actorCapacity);
           }
         })
       );

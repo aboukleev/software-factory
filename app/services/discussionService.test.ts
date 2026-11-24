@@ -74,7 +74,6 @@ describe("createDiscussionPost", () => {
     expect(JSON.parse(delivery.providerPayload)).toEqual({
       eventIdentity: `question.created:${result.source.id}`,
       eventKind: "question.created",
-      actorCapacity: "student",
       occurredAt: result.source.createdAt,
       sourceCommentId: result.source.id,
       rootQuestionId: result.source.id,
@@ -168,7 +167,6 @@ describe("createDiscussionPost", () => {
         eventIdentity: `staff-reply.created:${reply.id}`,
         sourceCommentId: reply.id,
         rootQuestionId: question.id,
-        actorCapacity: "instructor",
       })
     );
   });
