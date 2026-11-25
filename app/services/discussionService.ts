@@ -12,12 +12,8 @@ import {
   UserRole,
 } from "~/db/schema";
 import { MAX_COMMENT_LENGTH, MIN_COMMENT_LENGTH } from "~/lib/comments";
-import {
-  FakeKnockAdapter,
-  type NotificationProvider,
-  type NotificationPayload,
-} from "~/services/notificationProvider";
-import { notificationProvider } from "~/services/notificationProvider.server";
+import type { NotificationPayload } from "~/services/notificationProvider";
+import { wakeNotificationDispatcher } from "~/services/notificationDispatcherInstance.server";
 
 type DiscussionDatabase = typeof db;
 
@@ -36,10 +32,9 @@ type CreateDiscussionPostInput = {
 export function createDiscussionPost(
   input: CreateDiscussionPostInput,
   database: DiscussionDatabase = db,
-  provider: NotificationProvider = notificationProvider
+  wakeDispatcher: () => void = wakeNotificationDispatcher
 ) {
-  let dispatch:
-    { idempotencyKey: string; payload: NotificationPayload } | undefined;
+  let shouldWakeDispatcher = false;
   const result = database.transaction((tx) => {
     const trimmed = input.body.trim();
     if (trimmed.length < MIN_COMMENT_LENGTH) {
@@ -159,9 +154,10 @@ export function createDiscussionPost(
             idempotencyKey,
             providerPayload: JSON.stringify(payload),
             status: "queued",
+            nextAttemptAt: source.createdAt,
           })
           .run();
-        dispatch = { idempotencyKey, payload };
+        shouldWakeDispatcher = true;
       }
     } else if (parent) {
       const qualifyingQuestion = tx
@@ -227,9 +223,10 @@ export function createDiscussionPost(
               idempotencyKey,
               providerPayload: JSON.stringify(payload),
               status: "queued",
+              nextAttemptAt: source.createdAt,
             })
             .run();
-          dispatch = { idempotencyKey, payload };
+          shouldWakeDispatcher = true;
         }
       }
     }
@@ -237,16 +234,6 @@ export function createDiscussionPost(
     return { source, course };
   });
 
-  if (dispatch) {
-    if (provider instanceof FakeKnockAdapter) {
-      provider.schedule(dispatch.idempotencyKey, dispatch.payload);
-    } else {
-      void Promise.resolve()
-        .then(() =>
-          provider.trigger(dispatch!.idempotencyKey, dispatch!.payload)
-        )
-        .catch(() => undefined);
-    }
-  }
+  if (shouldWakeDispatcher) wakeDispatcher();
   return result;
 }

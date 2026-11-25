@@ -12,6 +12,14 @@ import { createTestDb, seedBaseData } from "~/test/setup";
 import { createDiscussionPost } from "~/services/discussionService";
 import { createNotificationFeedService } from "~/services/notificationFeed.server";
 import { FakeKnockAdapter } from "~/services/notificationProvider";
+import { createNotificationDispatcher } from "~/services/notificationDispatcher.server";
+
+async function dispatchQueued(
+  database: ReturnType<typeof createTestDb>,
+  provider: FakeKnockAdapter
+) {
+  await createNotificationDispatcher({ database, provider }).runOnce();
+}
 
 describe("Notification Feed enrichment", () => {
   test("shows current authorized context and a safe Question preview", async () => {
@@ -45,9 +53,9 @@ describe("Notification Feed enrichment", () => {
         body: "## Need **help** with [this guide](https://secret.example/guide) ![private diagram](https://secret.example/image.png)",
       },
       database,
-      provider
+      () => undefined
     );
-    await provider.settled();
+    await dispatchQueued(database, provider);
     database
       .update(courses)
       .set({ title: "Renamed course" })
@@ -104,7 +112,7 @@ describe("Notification Feed enrichment", () => {
         body: "Original Question",
       },
       database,
-      provider
+      () => undefined
     ).source;
     const reply = createDiscussionPost(
       {
@@ -114,9 +122,9 @@ describe("Notification Feed enrichment", () => {
         body: "Original Reply",
       },
       database,
-      provider
+      () => undefined
     ).source;
-    await provider.settled();
+    await dispatchQueued(database, provider);
     database
       .update(comments)
       .set({ deletedAt: new Date().toISOString() })
@@ -172,9 +180,9 @@ describe("Notification Feed enrichment", () => {
         body: "Secret Question",
       },
       database,
-      provider
+      () => undefined
     ).source;
-    await provider.settled();
+    await dispatchQueued(database, provider);
 
     database.delete(enrollments).where(eq(enrollments.userId, user.id)).run();
     database
@@ -245,9 +253,9 @@ describe("Notification Feed enrichment", () => {
         body: "Question",
       },
       database,
-      provider
+      () => undefined
     );
-    await provider.settled();
+    await dispatchQueued(database, provider);
     let attempts = 0;
     const service = createNotificationFeedService(database, provider, () => {
       attempts += 1;
@@ -297,9 +305,9 @@ describe("Notification Feed enrichment", () => {
         body: "Initial Question",
       },
       database,
-      provider
+      () => undefined
     ).source;
-    await provider.settled();
+    await dispatchQueued(database, provider);
     const service = createNotificationFeedService(database, provider);
 
     database
