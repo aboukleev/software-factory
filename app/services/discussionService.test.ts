@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createDiscussionPost } from "~/services/discussionService";
 import { createTestDb, seedBaseData } from "~/test/setup";
@@ -14,6 +14,14 @@ import {
   users,
 } from "~/db/schema";
 import { FakeKnockAdapter } from "~/services/notificationProvider";
+import { createNotificationDispatcher } from "~/services/notificationDispatcher.server";
+
+async function dispatchQueued(
+  database: ReturnType<typeof createTestDb>,
+  provider: FakeKnockAdapter
+) {
+  await createNotificationDispatcher({ database, provider }).runOnce();
+}
 
 describe("createDiscussionPost", () => {
   test("atomically records and delivers an enrolled Student Question", async () => {
@@ -34,6 +42,7 @@ describe("createDiscussionPost", () => {
       .returning()
       .get();
     const provider = new FakeKnockAdapter();
+    const wake = vi.fn();
 
     const result = createDiscussionPost(
       {
@@ -43,7 +52,7 @@ describe("createDiscussionPost", () => {
         body: "How does this work?",
       },
       database,
-      provider
+      wake
     );
 
     const [event] = database.select().from(notificationEvents).all();
@@ -83,8 +92,10 @@ describe("createDiscussionPost", () => {
     });
     expect(delivery.providerPayload).not.toContain("How does this work?");
     expect(delivery.providerPayload).not.toContain(user.name);
+    expect(provider.list(instructor.id)).toEqual([]);
+    expect(wake).toHaveBeenCalledOnce();
 
-    await provider.settled();
+    await dispatchQueued(database, provider);
     expect(provider.list(instructor.id)).toEqual([
       expect.objectContaining({
         idempotencyKey: delivery.idempotencyKey,
@@ -119,7 +130,7 @@ describe("createDiscussionPost", () => {
         body: "Question",
       },
       database,
-      provider
+      () => undefined
     ).source;
 
     const reply = createDiscussionPost(
@@ -130,7 +141,7 @@ describe("createDiscussionPost", () => {
         body: "Answer",
       },
       database,
-      provider
+      () => undefined
     ).source;
 
     const event = database
@@ -161,7 +172,7 @@ describe("createDiscussionPost", () => {
       })
     );
 
-    await provider.settled();
+    await dispatchQueued(database, provider);
     expect(provider.list(user.id)).toContainEqual(
       expect.objectContaining({
         eventIdentity: `staff-reply.created:${reply.id}`,
@@ -640,7 +651,7 @@ describe("createDiscussionPost", () => {
         body: "Question",
       },
       database,
-      provider
+      () => undefined
     ).source;
     const reply = createDiscussionPost(
       {
@@ -650,7 +661,7 @@ describe("createDiscussionPost", () => {
         body: "Answer",
       },
       database,
-      provider
+      () => undefined
     ).source;
     await provider.settled();
     const before = {
@@ -757,7 +768,7 @@ describe("createDiscussionPost", () => {
           body: "Still succeeds",
         },
         database,
-        provider
+        () => undefined
       )
     ).not.toThrow();
     await Promise.resolve();

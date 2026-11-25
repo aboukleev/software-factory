@@ -36,8 +36,20 @@ export type ProviderNotification = NotificationPayload & {
 export interface NotificationProvider {
   trigger(
     idempotencyKey: string,
-    payload: NotificationPayload
+    payload: NotificationPayload,
+    options?: { signal?: AbortSignal }
   ): void | Promise<void | ProviderTriggerResult>;
+}
+
+export class NotificationProviderError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterMs?: number
+  ) {
+    super(message);
+    this.name = "NotificationProviderError";
+  }
 }
 
 export type ProviderTriggerResult = {
@@ -71,9 +83,15 @@ export class KnockNotificationProvider implements NotificationProvider {
     this.apiBaseUrl = apiBaseUrl.replace(/\/$/, "");
   }
 
-  async trigger(idempotencyKey: string, untrustedPayload: NotificationPayload) {
+  async trigger(
+    idempotencyKey: string,
+    untrustedPayload: NotificationPayload,
+    options?: { signal?: AbortSignal }
+  ) {
     if (idempotencyKey.length === 0 || idempotencyKey.length > 255) {
-      throw new Error("Knock idempotency keys must contain 1 to 255 characters");
+      throw new Error(
+        "Knock idempotency keys must contain 1 to 255 characters"
+      );
     }
     const payload = notificationPayloadSchema.parse(untrustedPayload);
     const workflowKey = WORKFLOW_KEYS[payload.eventKind];
@@ -90,12 +108,19 @@ export class KnockNotificationProvider implements NotificationProvider {
           recipients: [String(payload.recipientId)],
           data: payload,
         }),
+        signal: options?.signal,
       }
     );
     const requestId = response.headers.get("x-request-id");
     if (!response.ok) {
-      throw new Error(
-        `Knock trigger failed (status ${response.status}, request ${requestId ?? "unknown"})`
+      const retryAfter = response.headers.get("retry-after");
+      const retryAfterMs = retryAfter
+        ? parseRetryAfter(retryAfter, Date.now())
+        : undefined;
+      throw new NotificationProviderError(
+        `Knock trigger failed (status ${response.status}, request ${requestId ?? "unknown"})`,
+        response.status,
+        retryAfterMs
       );
     }
     const result = z
@@ -104,6 +129,14 @@ export class KnockNotificationProvider implements NotificationProvider {
       .parse(await response.json());
     return { workflowRunId: result.workflow_run_id, requestId };
   }
+}
+
+export function parseRetryAfter(value: string, nowMs: number) {
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
+  const date = Date.parse(value);
+  if (!Number.isFinite(date)) return undefined;
+  return Math.max(0, date - nowMs);
 }
 
 export type NotificationPage = {
