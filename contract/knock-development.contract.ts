@@ -67,6 +67,12 @@ const feedSchema = z.object({
   }),
 });
 
+const missingUserTokenErrorSchema = z.object({
+  code: z.literal("missing_user_token"),
+  status: z.literal(400),
+  type: z.literal("authentication_error"),
+});
+
 async function readJson(response: Response) {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
@@ -145,7 +151,14 @@ describe("Knock Development security contract", () => {
       `${apiBaseUrl}/users/${stableRecipientId}/feeds/${config.feedChannelId}`,
       { headers: { Authorization: `Bearer ${config.publicApiKey}` } }
     );
-    expect([401, 403]).toContain(unsignedResponse.status);
+    expect(unsignedResponse.status).toBe(400);
+    expect(
+      missingUserTokenErrorSchema.parse(await unsignedResponse.json())
+    ).toEqual({
+      code: "missing_user_token",
+      status: 400,
+      type: "authentication_error",
+    });
 
     const decodedToken = JSON.parse(
       Buffer.from(userToken.split(".")[1] ?? "", "base64url").toString("utf8")
