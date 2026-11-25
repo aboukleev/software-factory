@@ -1,5 +1,5 @@
 import { NavLink, Form } from "react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "~/lib/utils";
 import { UserRole } from "~/db/schema";
 import { UserAvatar } from "~/components/user-avatar";
@@ -7,6 +7,8 @@ import {
   NotificationFeed,
   type NotificationFeedItem,
 } from "~/components/notification-feed";
+import { NotificationSync } from "~/components/notification-sync";
+import { requestNotificationReconciliation } from "~/services/notificationSync";
 import {
   BookOpen,
   ChartColumn,
@@ -132,6 +134,11 @@ export function Sidebar({
     setIsDark(document.documentElement.classList.contains("dark"));
   }, []);
 
+  const applySynchronizedPage = useCallback(
+    (page: { unreadCount: number }) => setUnreadCount(page.unreadCount),
+    []
+  );
+
   useEffect(() => {
     setUnreadCount(authoritativeUnreadCount);
   }, [authoritativeUnreadCount]);
@@ -163,6 +170,11 @@ export function Sidebar({
 
   return (
     <aside className="flex h-screen w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+      <NotificationSync
+        personId={currentUser?.id ?? null}
+        initialPage={notificationFeed}
+        onPage={applySynchronizedPage}
+      />
       <div className="relative flex h-14 items-center justify-between border-b border-sidebar-border px-4">
         <NavLink to="/" className="text-lg font-bold tracking-tight">
           Cadence
@@ -176,7 +188,12 @@ export function Sidebar({
                 : "Notification Feed"
             }
             aria-expanded={feedOpen}
-            onClick={() => setFeedOpen((open) => !open)}
+            onClick={() =>
+              setFeedOpen((open) => {
+                if (!open) requestNotificationReconciliation();
+                return !open;
+              })
+            }
             className="relative rounded-md p-2 hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <Bell className="size-4" />

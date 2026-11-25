@@ -247,6 +247,7 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
+        key={currentUser?.id ?? "anonymous"}
         currentUser={currentUser}
         recentCourses={recentCourses}
         isTeamAdmin={userIsTeamAdmin}
