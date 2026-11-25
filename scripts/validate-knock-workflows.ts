@@ -20,6 +20,25 @@ const PAYLOAD_FIELDS = [
   "sourceCommentId",
 ] as const;
 
+const markdownTemplate = {
+  "markdown_body@": z.literal("in_app_feed_1/markdown_body.md"),
+};
+
+const inAppTemplateSchema = z.union([
+  z
+    .object({
+      ...markdownTemplate,
+      action_url: z.string().url(),
+    })
+    .strict(),
+  z
+    .object({
+      ...markdownTemplate,
+      action_buttons: z.array(z.unknown()).min(1),
+    })
+    .strict(),
+]);
+
 const workflowSchema = z.object({
   $schema: z.literal("https://schemas.knock.app/cli/workflow.json"),
   name: z.string().min(1),
@@ -33,12 +52,10 @@ const workflowSchema = z.object({
   }),
   steps: z.array(
     z.object({
-      channel_key: z.literal("in-app-feed"),
+      channel_key: z.literal("in-app"),
       channel_type: z.literal("in_app_feed"),
       ref: z.literal("in_app_feed_1"),
-      template: z.object({
-        "markdown_body@": z.literal("in_app_feed_1/markdown_body.md"),
-      }),
+      template: inAppTemplateSchema,
       type: z.literal("channel"),
     })
   ),
