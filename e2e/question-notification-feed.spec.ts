@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import Database from "better-sqlite3";
 
 async function switchUser(page: import("@playwright/test").Page, name: string) {
   const userButton = page.getByRole("button", {
@@ -40,10 +41,23 @@ test("an enrolled Student Question reaches the owning Instructor", async ({
     name: /A Student asked a Question\./,
   });
   await expect(item).toBeVisible();
+  await expect(item).toContainText(question);
   await item.click();
 
   await expect(page).toHaveURL(/#question-\d+$/);
   await expect(page.getByText(question)).toBeVisible();
+  const questionTarget = page.locator(new URL(page.url()).hash);
+  await expect(questionTarget).toBeFocused();
+  await expect(questionTarget).toBeInViewport();
+  await expect(questionTarget).toHaveAttribute(
+    "data-notification-highlight",
+    "true"
+  );
+  await expect(questionTarget).not.toHaveAttribute(
+    "data-notification-highlight",
+    "true",
+    { timeout: 3_000 }
+  );
   await expect(
     page.getByRole("button", { name: "Notification Feed", exact: true })
   ).toBeVisible();
@@ -144,14 +158,124 @@ test("an owning Instructor Reply reaches the Student and opens the exact Reply",
   await questionCard.getByRole("button", { name: "Post reply" }).click();
 
   await switchUser(page, "Emma Wilson");
+  await page.goto("/courses/introduction-to-typescript/lessons/1");
+  const postedQuestion = page.locator(`[id^="question-"]`, {
+    hasText: question,
+  });
+  page.once("dialog", (dialog) => void dialog.accept());
+  await postedQuestion.getByRole("button", { name: "Delete" }).click();
+  await expect(
+    page.getByText("This comment was deleted.").last()
+  ).toBeVisible();
   await page
     .getByRole("button", { name: /Notification Feed, \d+ unread/ })
     .click();
-  await page
-    .getByRole("link", { name: /Your Instructor replied to your Question\./ })
-    .click();
+  const replyNotification = page.getByRole("link", {
+    name: /Your Instructor replied to your Question\./,
+  });
+  await expect(replyNotification).toContainText(answer);
+  await replyNotification.click();
   await expect(page).toHaveURL(/#reply-\d+$/);
-  await expect(page.locator(new URL(page.url()).hash)).toContainText(answer);
+  const replyTarget = page.locator(new URL(page.url()).hash);
+  await expect(replyTarget).toContainText(answer);
+  await expect(replyTarget).toBeFocused();
+  await expect(replyTarget).toBeInViewport();
+  await expect(replyTarget).toHaveAttribute(
+    "data-notification-highlight",
+    "true"
+  );
+});
+
+test("current edits produce safe previews and empty previews are omitted", async ({
+  page,
+}) => {
+  await page.goto("/courses/introduction-to-typescript/lessons/1");
+  await switchUser(page, "Emma Wilson");
+  const initial = `Preview source ${Date.now()}`;
+  const edited = `Edited **Question** with [useful label](https://secret.example/guide) ![private diagram](https://secret.example/image.png) raw https://secret.example/raw`;
+  await page
+    .getByPlaceholder("Ask a question or share what you found...")
+    .fill(initial);
+  await page.getByRole("button", { name: "Post comment" }).click();
+  const question = page.locator(`[id^="question-"]`, { hasText: initial });
+  const questionId = await question.getAttribute("id");
+  expect(questionId).not.toBeNull();
+  const questionTarget = page.locator(`#${questionId}`);
+  await question.getByRole("button", { name: "Edit" }).click();
+  await questionTarget.getByPlaceholder("Edit your comment").fill(edited);
+  await questionTarget.getByRole("button", { name: "Save changes" }).click();
+  await expect(questionTarget).toContainText(
+    "Edited Question with useful label"
+  );
+
+  const emptySource = `![private](https://secret.example/image-${Date.now()}.png) https://secret.example/raw`;
+  await page
+    .getByPlaceholder("Ask a question or share what you found...")
+    .fill(emptySource);
+  await page.getByRole("button", { name: "Post comment" }).click();
+
+  await switchUser(page, "Sarah Chen");
+  await page
+    .getByRole("button", { name: /Notification Feed, \d+ unread/ })
+    .click();
+  const feed = page.getByRole("region", { name: "Notification Feed" });
+  const links = feed.getByRole("link", {
+    name: /A Student asked a Question\./,
+  });
+  await expect(
+    links.filter({ hasText: "Edited Question with useful label" })
+  ).toHaveCount(1);
+  await expect(feed.getByText(/secret\.example/)).toHaveCount(0);
+  await expect(feed.getByText(/private diagram|private\]/)).toHaveCount(0);
+});
+
+test("lost Course authorization hides all resolved Notification context", async ({
+  page,
+}) => {
+  await page.goto("/courses/introduction-to-typescript/lessons/1");
+  await switchUser(page, "Emma Wilson");
+  const question = `Private authorization context ${Date.now()}`;
+  await page
+    .getByPlaceholder("Ask a question or share what you found...")
+    .fill(question);
+  await page.getByRole("button", { name: "Post comment" }).click();
+
+  const sqlite = new Database("data.db");
+  const course = sqlite
+    .prepare(
+      "select id, instructor_id as instructorId from courses where slug = ?"
+    )
+    .get("introduction-to-typescript") as {
+    id: number;
+    instructorId: number;
+  };
+  const replacement = sqlite
+    .prepare(
+      "select id from users where role = 'instructor' and id <> ? order by id limit 1"
+    )
+    .get(course.instructorId) as { id: number };
+
+  try {
+    sqlite
+      .prepare("update courses set instructor_id = ? where id = ?")
+      .run(replacement.id, course.id);
+    await switchUser(page, "Sarah Chen");
+    await page
+      .getByRole("button", { name: /Notification Feed, \d+ unread/ })
+      .click();
+    const feed = page.getByRole("region", { name: "Notification Feed" });
+    const unavailable = feed
+      .locator('a[href="/notifications/unavailable"]')
+      .first();
+    await expect(unavailable).toContainText("Conversation no longer available");
+    await expect(unavailable).not.toContainText(question);
+    await expect(unavailable).not.toContainText("Introduction to TypeScript");
+  } finally {
+    sqlite
+      .prepare("update courses set instructor_id = ? where id = ?")
+      .run(course.instructorId, course.id);
+    sqlite.close();
+  }
 });
 
 test("a Platform Admin Reply uses Platform Admin wording for the Student", async ({

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, useLocation } from "react-router";
 import { toast } from "sonner";
 import { MessageSquare, Pencil, Reply, Trash2 } from "lucide-react";
 import { Button } from "~/components/ui/button";
@@ -234,7 +234,7 @@ function CommentItem({
       id={`${isReply ? "reply" : "question"}-${comment.id}`}
       tabIndex={-1}
       className={cn(
-        "py-3 target:rounded-md target:bg-primary/10 target:outline target:outline-2 target:outline-primary",
+        "py-3 data-[notification-highlight=true]:rounded-md data-[notification-highlight=true]:bg-primary/10 data-[notification-highlight=true]:outline data-[notification-highlight=true]:outline-2 data-[notification-highlight=true]:outline-primary",
         isReply && "border-l pl-4"
       )}
     >
@@ -364,6 +364,24 @@ export function CommentThread({
   canPost: boolean;
   instructorName: string;
 }) {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!location.hash) return;
+    const target = document.getElementById(
+      decodeURIComponent(location.hash.slice(1))
+    );
+    if (!target) return;
+
+    target.scrollIntoView({ block: "center" });
+    target.focus({ preventScroll: true });
+    target.dataset.notificationHighlight = "true";
+    const timeout = window.setTimeout(() => {
+      delete target.dataset.notificationHighlight;
+    }, 2000);
+    return () => window.clearTimeout(timeout);
+  }, [location.hash]);
+
   return (
     <Card className="mb-8">
       <CardContent className="p-6">

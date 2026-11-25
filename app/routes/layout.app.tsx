@@ -19,6 +19,7 @@ import {
   LessonProgressStatus,
 } from "~/db/schema";
 import { getNotificationFeed } from "~/services/notificationFeed.server";
+import { getAccess } from "~/lib/access.server";
 
 function getAllUsers() {
   return db.select().from(users).all();
@@ -218,7 +219,15 @@ export async function loader({ request }: Route.LoaderArgs) {
     countryTierInfo,
     countries: COUNTRIES,
     isTeamAdmin: currentUserId ? isTeamAdmin(currentUserId) : false,
-    notificationFeed: currentUserId ? getNotificationFeed(currentUserId) : [],
+    notificationFeed: currentUserId
+      ? await getNotificationFeed(
+          currentUserId,
+          async (recipientId, courseId) => {
+            const access = await getAccess(request, courseId);
+            return access.userId === recipientId && access.canViewContent;
+          }
+        )
+      : [],
   };
 }
 
