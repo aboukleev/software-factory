@@ -118,17 +118,62 @@ function payload(
 }
 
 const knock = new Knock(config.publicApiKey);
+knock.authenticate({ id: stableRecipientId }, userToken, {
+  identificationStrategy: "skip",
+});
 const feed = knock.feeds.initialize(config.feedChannelId, {
   page_size: 1,
   mode: "compact",
 });
 
+async function waitForRealtimeConnection() {
+  const socket = knock.client().socket;
+  if (!socket) {
+    throw new Error("Knock Feed contract has no real-time socket");
+  }
+  if (socket.isConnected()) return;
+
+  await Promise.race([
+    new Promise<void>((resolve) => {
+      socket.onOpen(resolve);
+      if (socket.isConnected()) resolve();
+    }),
+    wait(15_000).then(() => {
+      throw new Error("Timed out connecting to Knock real-time service");
+    }),
+  ]);
+}
+
+async function waitForRealtimeChannel() {
+  const socket = knock.client().socket as
+    | (NonNullable<ReturnType<typeof knock.client>["socket"]> & {
+        channels: Array<{ state: string; topic: string }>;
+      })
+    | undefined;
+  if (!socket) {
+    throw new Error("Knock Feed contract has no real-time socket");
+  }
+
+  for (let attempt = 0; attempt < 150; attempt += 1) {
+    const channel = socket.channels.find(
+      (candidate) => candidate.topic === feed.socketChannelTopic
+    );
+    if (channel?.state === "joined") return;
+    await wait(100);
+  }
+
+  const state = socket.channels.find(
+    (candidate) => candidate.topic === feed.socketChannelTopic
+  )?.state;
+  throw new Error(
+    `Timed out joining Knock Feed real-time channel (state ${state ?? "missing"})`
+  );
+}
+
 beforeAll(async () => {
-  knock.authenticate({ id: stableRecipientId }, userToken, {
-    identificationStrategy: "skip",
-  });
   feed.listenForUpdates();
-  await wait(750);
+  await waitForRealtimeConnection();
+  await waitForRealtimeChannel();
 });
 
 afterAll(async () => {
@@ -146,6 +191,10 @@ afterAll(async () => {
 });
 
 describe("Knock Development security contract", () => {
+  test("provides the browser runtime required for Feed real-time updates", () => {
+    expect(knock.client().socket).toBeDefined();
+  });
+
   test("requires enhanced-security tokens and exercises the complete Feed contract", async () => {
     const unsignedResponse = await fetch(
       `${apiBaseUrl}/users/${stableRecipientId}/feeds/${config.feedChannelId}`,
@@ -178,7 +227,9 @@ describe("Knock Development security contract", () => {
     const hint = new Promise((resolve) => {
       hintResolve = resolve;
     });
-    feed.on("messages.new", (response: unknown) => hintResolve?.(response));
+    feed.on("items.received.realtime", (response: unknown) =>
+      hintResolve?.(response)
+    );
 
     const provider = new KnockNotificationProvider({
       secretApiKey: config.secretApiKey,
@@ -194,11 +245,13 @@ describe("Knock Development security contract", () => {
     expect(duplicateResult.workflowRunId).toBe(firstResult.workflowRunId);
     expect(firstResult.requestId).toEqual(expect.any(String));
 
+    await waitForFeedCount(1);
+
     await expect(
       Promise.race([
         hint,
         wait(15_000).then(() => {
-          throw new Error("No Knock real-time new-message hint received");
+          throw new Error("No Knock real-time Feed hint received");
         }),
       ])
     ).resolves.toBeDefined();
