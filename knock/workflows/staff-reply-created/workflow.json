@@ -29,12 +29,13 @@
   },
   "steps": [
     {
-      "channel_key": "in-app-feed",
+      "channel_key": "in-app",
       "channel_type": "in_app_feed",
       "description": "Create one privacy-safe Notification Feed item.",
       "name": "In-app feed",
       "ref": "in_app_feed_1",
       "template": {
+        "action_url": "https://cadence.example/notifications",
         "markdown_body@": "in_app_feed_1/markdown_body.md"
       },
       "type": "channel"
