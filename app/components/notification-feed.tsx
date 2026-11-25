@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { cn } from "~/lib/utils";
+import {
+  notificationPageEvent,
+  notificationRefreshFailedEvent,
+  notificationSessionClearedEvent,
+  requestNotificationReconciliation,
+} from "~/services/notificationSync";
 
 export type NotificationFeedItem = {
   id: string;
@@ -22,7 +28,15 @@ export type NotificationFeedPage = {
   nextCursor: string | null;
 };
 
-const feedChangedEvent = "cadence:notification-feed-changed";
+export function countNewHeadItems(
+  next: ReadonlyArray<{ id: string; [key: string]: unknown }>,
+  current: ReadonlyArray<{ id: string; [key: string]: unknown }>
+) {
+  const currentIds = new Set(current.map((item) => item.id));
+  const firstExistingIndex = next.findIndex((item) => currentIds.has(item.id));
+  return firstExistingIndex === -1 ? next.length : firstExistingIndex;
+}
+
 const unreadCountEvent = "cadence:notification-unread-count";
 
 function notificationWording(item: NotificationFeedItem) {
@@ -75,10 +89,6 @@ async function requestPage(cursor?: string) {
   return (await response.json()) as NotificationFeedPage;
 }
 
-function announceFeedChanged() {
-  window.dispatchEvent(new Event(feedChangedEvent));
-}
-
 export function NotificationFeed({
   initialPage,
   full = false,
@@ -99,10 +109,14 @@ export function NotificationFeed({
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState(false);
   const [newPage, setNewPage] = useState<NotificationFeedPage | null>(null);
+  const [newNotificationCount, setNewNotificationCount] = useState(0);
+  const [liveAnnouncement, setLiveAnnouncement] = useState("");
   const [now, setNow] = useState(() => new Date());
   const listRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const loadMoreRef = useRef<HTMLButtonElement>(null);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
   const unreadCount = useMemo(() => {
     if (optimisticAll) return 0;
@@ -121,10 +135,55 @@ export function NotificationFeed({
       ];
     });
     setAuthoritativeUnread(page.unreadCount);
+    setNextCursor(page.nextCursor);
     setOptimisticRead(new Set());
     setOptimisticAll(false);
     setRefreshError(false);
   }, []);
+
+  const reconcilePage = useCallback(
+    (page: NotificationFeedPage, deliberate = false) => {
+      const currentItems = itemsRef.current;
+      const arrivalCount = countNewHeadItems(page.items, currentItems);
+      const awayFromTop = (listRef.current?.scrollTop ?? 0) > 32;
+      if (!deliberate && awayFromTop && arrivalCount > 0) {
+        setNewPage(page);
+        setNewNotificationCount(arrivalCount);
+        setAuthoritativeUnread(page.unreadCount);
+        setRefreshError(false);
+        return;
+      }
+
+      applyHead(page);
+      setNewPage(null);
+      setNewNotificationCount(0);
+      if (!deliberate && arrivalCount > 0) {
+        setLiveAnnouncement(
+          arrivalCount === 1
+            ? "New Notification"
+            : `${arrivalCount} new Notifications`
+        );
+      }
+      if (deliberate) {
+        const currentIds = new Set(currentItems.map((item) => item.id));
+        const firstNewId = page.items.find(
+          (item) => !currentIds.has(item.id)
+        )?.id;
+        setItems(page.items);
+        requestAnimationFrame(() => {
+          listRef.current?.scrollTo({ top: 0 });
+          const firstNewItem = Array.from(
+            listRef.current?.querySelectorAll<HTMLElement>(
+              "[data-notification-id]"
+            ) ?? []
+          ).find((element) => element.dataset.notificationId === firstNewId);
+          const firstNewLink = firstNewItem?.querySelector<HTMLElement>("a");
+          (firstNewLink ?? headingRef.current)?.focus();
+        });
+      }
+    },
+    [applyHead]
+  );
 
   const refresh = useCallback(
     async (deliberate = false) => {
@@ -132,33 +191,14 @@ export function NotificationFeed({
       setRefreshing(true);
       try {
         const page = await requestPage();
-        const hasNewHead = page.items[0]?.id !== items[0]?.id;
-        const awayFromTop = (listRef.current?.scrollTop ?? 0) > 32;
-        if (!deliberate && awayFromTop && hasNewHead) {
-          setNewPage(page);
-          setAuthoritativeUnread(page.unreadCount);
-          setRefreshError(false);
-        } else {
-          applyHead(page);
-          setNewPage(null);
-          if (deliberate) {
-            setItems(page.items);
-            setNextCursor(page.nextCursor);
-            requestAnimationFrame(() => {
-              listRef.current?.scrollTo({ top: 0 });
-              const firstLink =
-                listRef.current?.querySelector<HTMLElement>("a");
-              (firstLink ?? headingRef.current)?.focus();
-            });
-          }
-        }
+        reconcilePage(page, deliberate);
       } catch {
         setRefreshError(true);
       } finally {
         setRefreshing(false);
       }
     },
-    [applyHead, items, refreshing]
+    [reconcilePage, refreshing]
   );
 
   useEffect(() => {
@@ -169,10 +209,40 @@ export function NotificationFeed({
   }, [onUnreadCountChange, unreadCount]);
 
   useEffect(() => {
+    const onPage = (event: Event) => {
+      const page = (event as CustomEvent<NotificationFeedPage>).detail;
+      if (page) reconcilePage(page);
+    };
+    const onSessionCleared = () => {
+      setItems([]);
+      setNextCursor(null);
+      setAuthoritativeUnread(0);
+      setOptimisticRead(new Set());
+      setOptimisticAll(false);
+      setNewPage(null);
+      setNewNotificationCount(0);
+      setLiveAnnouncement("");
+    };
+    const onRefreshFailed = () => setRefreshError(true);
+    window.addEventListener(notificationPageEvent, onPage);
+    window.addEventListener(notificationRefreshFailedEvent, onRefreshFailed);
+    window.addEventListener(notificationSessionClearedEvent, onSessionCleared);
+    requestNotificationReconciliation(false, "feed-open");
     void requestPage()
-      .then(applyHead)
+      .then(reconcilePage)
       .catch(() => setRefreshError(true));
-  }, [applyHead]);
+    return () => {
+      window.removeEventListener(notificationPageEvent, onPage);
+      window.removeEventListener(
+        notificationRefreshFailedEvent,
+        onRefreshFailed
+      );
+      window.removeEventListener(
+        notificationSessionClearedEvent,
+        onSessionCleared
+      );
+    };
+  }, [reconcilePage]);
 
   useEffect(() => {
     const updateTime = () => setNow(new Date());
@@ -182,17 +252,13 @@ export function NotificationFeed({
         void refresh();
       }
     };
-    const onFeedChanged = () => void refresh();
     const interval = window.setInterval(() => {
       updateTime();
-      if (document.visibilityState === "visible") void refresh();
     }, 60_000);
     document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener(feedChangedEvent, onFeedChanged);
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener(feedChangedEvent, onFeedChanged);
     };
   }, [refresh]);
 
@@ -212,9 +278,8 @@ export function NotificationFeed({
           next.delete(notificationId);
           return next;
         });
-      } else {
-        announceFeedChanged();
       }
+      requestNotificationReconciliation(true, "read-mutation");
     });
   }
 
@@ -236,10 +301,11 @@ export function NotificationFeed({
       );
       setAuthoritativeUnread(0);
       setOptimisticAll(false);
-      announceFeedChanged();
+      requestNotificationReconciliation(true, "read-mutation");
     } catch {
       setOptimisticAll(false);
       setMarkAllError(true);
+      requestNotificationReconciliation(true, "read-mutation");
     }
   }
 
@@ -285,6 +351,14 @@ export function NotificationFeed({
           {unreadCount} unread
         </span>
       </div>
+      <p
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {liveAnnouncement}
+      </p>
       {unreadCount > 0 && (
         <button
           type="button"
@@ -327,12 +401,17 @@ export function NotificationFeed({
           className="mb-2 self-start rounded-md px-2 py-1 text-sm underline"
           onClick={() => void refresh(true)}
         >
-          New Notifications
+          {newNotificationCount > 1
+            ? `${newNotificationCount} New Notifications`
+            : "New Notification"}
         </button>
       )}
       <div
         ref={listRef}
-        className={cn("min-h-0", full && "max-h-[70vh] overflow-y-auto")}
+        className={cn(
+          "min-h-0 overflow-y-auto",
+          full ? "max-h-[70vh]" : "max-h-[60vh]"
+        )}
         aria-busy={refreshing || loadingMore}
       >
         {items.length === 0 ? (
@@ -390,7 +469,7 @@ export function NotificationFeed({
                 </>
               );
               return (
-                <li key={item.id}>
+                <li key={item.id} data-notification-id={item.id}>
                   {item.availability === "temporary_failure" ? (
                     <div
                       role="group"

@@ -381,3 +381,182 @@ test("the full Feed pages provider order, refreshes time, and retains stale cont
   await items.first().click();
   await expect(page.getByText(longQuestion, { exact: true })).toBeVisible();
 });
+
+test("live hints preserve a scrolled reader and converge across tabs without disruption", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/courses/introduction-to-typescript/lessons/1");
+  await switchUser(page, "Sarah Chen");
+
+  const occurredAt = new Date().toISOString();
+  const item = (id: string, preview: string) => ({
+    id,
+    readAt: null,
+    occurredAt,
+    eventKind: "question.created" as const,
+    actorCapacity: "student" as const,
+    availability: "available" as const,
+    courseTitle: "Introduction to TypeScript",
+    lessonTitle: "Introduction to TypeScript",
+    preview,
+    destinationUrl: "/notifications/unavailable",
+    destinationAvailable: true,
+  });
+  const originalItems = Array.from({ length: 25 }, (_, index) =>
+    item(`existing-${index}`, `Existing Notification ${index + 1}`)
+  );
+  let authoritativePage: {
+    items: Array<ReturnType<typeof item>>;
+    unreadCount: number;
+    nextCursor: string | null;
+  } = {
+    items: originalItems,
+    unreadCount: originalItems.length,
+    nextCursor: null,
+  };
+  await page.route("**/notifications/feed*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(authoritativePage),
+    })
+  );
+  await page.goto("/notifications");
+
+  const feed = page.getByRole("region", { name: "Notification Feed" });
+  const list = feed.locator("[aria-busy]");
+  const existingFocus = feed.getByRole("link", {
+    name: /Existing Notification 10/,
+  });
+  await existingFocus.focus();
+  await list.evaluate((element) => {
+    element.scrollTop = 240;
+  });
+  const scrollBefore = await list.evaluate((element) => element.scrollTop);
+
+  const newItems = [
+    item("newest", "Newest Notification"),
+    item("newer", "Newer Notification"),
+  ];
+  authoritativePage = {
+    items: [...newItems, ...originalItems.slice(0, 23)],
+    unreadCount: 27,
+    nextCursor: "25",
+  };
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent("cadence:notification-refresh", {
+        detail: { reason: "websocket", broadcast: false },
+      })
+    )
+  );
+
+  const arrivals = feed.getByRole("button", {
+    name: "2 New Notifications",
+  });
+  await expect(arrivals).toBeVisible();
+  await expect(existingFocus).toBeFocused();
+  await expect
+    .poll(() => list.evaluate((element) => element.scrollTop))
+    .toBe(scrollBefore);
+  await expect(feed.getByText("Newest Notification")).toHaveCount(0);
+
+  await arrivals.click();
+  const newest = feed.getByRole("link", { name: /Newest Notification/ });
+  await expect(newest).toBeFocused();
+  await expect
+    .poll(() => list.evaluate((element) => element.scrollTop))
+    .toBe(0);
+
+  const keptFocus = feed.getByRole("link", { name: /Newer Notification/ });
+  await keptFocus.focus();
+  authoritativePage = {
+    items: [item("top-live", "Top Live Notification"), ...newItems],
+    unreadCount: 28,
+    nextCursor: null,
+  };
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent("cadence:notification-refresh", {
+        detail: { reason: "websocket", broadcast: false },
+      })
+    )
+  );
+  await expect(feed.getByText("Top Live Notification")).toBeVisible();
+  await expect(feed.getByRole("status")).toHaveText("New Notification");
+  await expect(keptFocus).toBeFocused();
+
+  authoritativePage = {
+    items: [item("missed", "Missed While Hidden"), ...authoritativePage.items],
+    unreadCount: 29,
+    nextCursor: null,
+  };
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(feed.getByText("Missed While Hidden")).toHaveCount(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(feed.getByText("Missed While Hidden")).toBeVisible();
+
+  authoritativePage = {
+    items: [item("online", "Recovered Online"), ...authoritativePage.items],
+    unreadCount: 30,
+    nextCursor: null,
+  };
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(feed.getByText("Recovered Online")).toBeVisible();
+
+  const secondTab = await context.newPage();
+  await secondTab.route("**/notifications/feed*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(authoritativePage),
+    })
+  );
+  await secondTab.goto("/courses/introduction-to-typescript/lessons/1");
+  await expect(
+    secondTab.getByRole("button", { name: /Notification Feed, 30 unread/ })
+  ).toBeVisible();
+
+  authoritativePage = {
+    items: [
+      item("broadcast", "Broadcast Notification"),
+      ...authoritativePage.items,
+    ],
+    unreadCount: 31,
+    nextCursor: null,
+  };
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent("cadence:notification-refresh", {
+        detail: { reason: "mutation", broadcast: true },
+      })
+    )
+  );
+  await expect(
+    secondTab.getByRole("button", { name: /Notification Feed, 31 unread/ })
+  ).toBeVisible();
+  await expect(
+    secondTab.getByRole("region", { name: "Notification Feed" })
+  ).toHaveCount(0);
+  await expect(secondTab.getByRole("status")).toHaveCount(0);
+
+  await secondTab.unroute("**/notifications/feed*");
+  await switchUser(secondTab, "Emma Wilson");
+  await expect(secondTab.getByText("Broadcast Notification")).toHaveCount(0);
+  await expect(
+    secondTab.getByRole("button", { name: "Notification Feed", exact: true })
+  ).toBeVisible();
+});

@@ -73,6 +73,22 @@ const missingUserTokenErrorSchema = z.object({
   type: z.literal("authentication_error"),
 });
 
+// Real-time delivery is a lossy refresh signal. Validate only the stable
+// metadata envelope that Cadence uses to decide to reconcile; item content is
+// deliberately neither trusted nor applied by the browser client.
+const realtimeHintSchema = z
+  .object({
+    event: z.literal("items.received.realtime"),
+    items: z.array(z.unknown()),
+    metadata: z
+      .object({
+        unread_count: z.number().int().nonnegative(),
+        total_count: z.number().int().nonnegative(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
 async function readJson(response: Response) {
   const body = (await response.json()) as unknown;
   if (!response.ok) {
@@ -261,14 +277,14 @@ describe("Knock Development security contract", () => {
 
     await waitForFeedCount(1);
 
-    await expect(
-      Promise.race([
-        hint,
-        wait(15_000).then(() => {
-          throw new Error("No Knock real-time Feed hint received");
-        }),
-      ])
-    ).resolves.toBeDefined();
+    const realtimeHint = await Promise.race([
+      hint,
+      wait(15_000).then(() => {
+        throw new Error("No Knock real-time Feed hint received");
+      }),
+    ]);
+    const parsedHint = realtimeHintSchema.parse(realtimeHint);
+    expect(parsedHint.metadata.total_count).toBeGreaterThanOrEqual(1);
 
     const secondSourceId = Number(firstIdentity.split(":")[1]) + 2;
     const secondResult = await provider.trigger(
