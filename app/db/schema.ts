@@ -404,7 +404,30 @@ export const notificationDeliveries = sqliteTable(
     workflowKey: text("workflow_key").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     providerPayload: text("provider_payload").notNull(),
-    status: text("status").notNull().$type<"queued">(),
+    status: text("status")
+      .notNull()
+      .$type<
+        | "queued"
+        | "attempting"
+        | "retry_scheduled"
+        | "accepted"
+        | "delivered"
+        | "cancelled"
+        | "permanently_failed"
+        | "outcome_unknown"
+      >(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: text("lease_expires_at"),
+    firstAttemptAt: text("first_attempt_at"),
+    lastAttemptAt: text("last_attempt_at"),
+    acceptedAt: text("accepted_at"),
+    deliveredAt: text("delivered_at"),
+    terminalAt: text("terminal_at"),
+    errorCategory: text("error_category"),
+    providerRequestId: text("provider_request_id"),
+    providerWorkflowRunId: text("provider_workflow_run_id"),
     createdAt: text("created_at")
       .notNull()
       .$defaultFn(() => new Date().toISOString()),
@@ -417,6 +440,14 @@ export const notificationDeliveries = sqliteTable(
     ),
     uniqueIndex("notification_deliveries_idempotency_unique").on(
       table.idempotencyKey
+    ),
+    index("notification_deliveries_due_idx").on(
+      table.status,
+      table.nextAttemptAt
+    ),
+    index("notification_deliveries_lease_idx").on(
+      table.status,
+      table.leaseExpiresAt
     ),
   ]
 );

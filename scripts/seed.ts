@@ -2055,6 +2055,7 @@ This course is still in draft while the cluster examples are rewritten against t
         lessonId: c1q1.lessonId,
       }),
       status: "queued",
+      nextAttemptAt: c1q1.createdAt,
     })
     .run();
   console.log(
