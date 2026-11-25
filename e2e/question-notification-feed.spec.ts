@@ -309,3 +309,75 @@ test("a Platform Admin Reply uses Platform Admin wording for the Student", async
   await expect(page).toHaveURL(/#reply-\d+$/);
   await expect(page.locator(new URL(page.url()).hash)).toContainText(answer);
 });
+
+test("the full Feed pages provider order, refreshes time, and retains stale content", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.goto("/courses/introduction-to-typescript/lessons/1");
+  await switchUser(page, "Emma Wilson");
+
+  const questionPrefix = `Pagination ${Date.now()}`;
+  const longQuestion = `${questionPrefix} item 21 ${"long-content ".repeat(120)}`;
+  for (let index = 1; index <= 21; index += 1) {
+    const question =
+      index === 21 ? longQuestion : `${questionPrefix} item ${index}`;
+    const response = await page.request.post(
+      "/courses/introduction-to-typescript/lessons/1",
+      { form: { intent: "create-comment", body: question } }
+    );
+    expect(response.ok()).toBe(true);
+  }
+
+  await switchUser(page, "Sarah Chen");
+  await page.goto("/notifications");
+  const feed = page.getByRole("region", { name: "Notification Feed" });
+  const items = feed.getByRole("link", {
+    name: /A Student asked a Question\./,
+  });
+
+  await expect(items).toHaveCount(20);
+  const newestTime = items.first().locator("time");
+  await expect(newestTime).toHaveText(/just now/);
+  await expect(newestTime).toHaveAttribute("dateTime", /T/);
+  await expect(newestTime).toHaveAttribute("title", /\d/);
+
+  await page.clock.setFixedTime(Date.now() + 121_000);
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange"))
+  );
+  await expect(newestTime).toHaveText(/2 minutes ago/);
+
+  const loadMore = feed.getByRole("button", { name: "Load more" });
+  await loadMore.focus();
+  await loadMore.click();
+  await expect.poll(() => items.count()).toBeGreaterThan(20);
+  const loadedItemCount = await items.count();
+  await expect(loadMore).toHaveCount(0);
+  await expect(items.nth(20)).toBeFocused();
+
+  await expect(feed.getByRole("button", { name: /mark unread/i })).toHaveCount(
+    0
+  );
+  await expect(feed.getByRole("button", { name: /archive/i })).toHaveCount(0);
+  await expect(feed.getByRole("button", { name: /delete/i })).toHaveCount(0);
+
+  await page.route("**/notifications/feed*", async (route) => {
+    await route.fulfill({ status: 503, body: "temporarily unavailable" });
+  });
+  await feed.getByRole("button", { name: "Mark all read" }).click();
+  await expect(
+    feed.getByText(/temporarily out of date.*Course activity is unaffected/i)
+  ).toBeVisible();
+  await expect(items).toHaveCount(loadedItemCount);
+
+  await page.unroute("**/notifications/feed*");
+  await feed.getByRole("button", { name: "Retry Feed" }).click();
+  await expect(feed.getByText(/temporarily out of date/i)).toHaveCount(0);
+  await expect(feed.getByText("0 unread")).toBeVisible();
+
+  // The provider's newest item remains first after pagination and refresh. Its
+  // long source content can still be reached without being copied into Knock.
+  await items.first().click();
+  await expect(page.getByText(longQuestion, { exact: true })).toBeVisible();
+});

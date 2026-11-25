@@ -18,7 +18,7 @@ import {
   TeamMemberRole,
   LessonProgressStatus,
 } from "~/db/schema";
-import { getNotificationFeed } from "~/services/notificationFeed.server";
+import { getNotificationFeedPage } from "~/services/notificationFeed.server";
 import { getAccess } from "~/lib/access.server";
 
 function getAllUsers() {
@@ -220,14 +220,15 @@ export async function loader({ request }: Route.LoaderArgs) {
     countries: COUNTRIES,
     isTeamAdmin: currentUserId ? isTeamAdmin(currentUserId) : false,
     notificationFeed: currentUserId
-      ? await getNotificationFeed(
+      ? await getNotificationFeedPage(
           currentUserId,
+          {},
           async (recipientId, courseId) => {
             const access = await getAccess(request, courseId);
             return access.userId === recipientId && access.canViewContent;
           }
         )
-      : [],
+      : { items: [], unreadCount: 0, nextCursor: null },
   };
 }
 

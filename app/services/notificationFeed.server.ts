@@ -13,11 +13,18 @@ import {
 } from "~/db/schema";
 import {
   fakeKnockAdapter,
+  type NotificationPage,
   type ProviderNotification,
 } from "~/services/notificationProvider";
 
 type NotificationDatabase = typeof db;
-type FeedProvider = { list(recipientId: number): ProviderNotification[] };
+type FeedProvider = {
+  list(recipientId: number): ProviderNotification[];
+  listPage?(
+    recipientId: number,
+    options?: { cursor?: string; pageSize?: number }
+  ): NotificationPage;
+};
 type AuthorizationCheck = (
   recipientId: number,
   courseId: number
@@ -90,8 +97,7 @@ function previewTokenText(token: PreviewToken): string {
   const text = nested ?? token.text ?? "";
   if (
     token.type === "link" &&
-    (/^(?:https?:\/\/|www\.)/i.test(text.trim()) ||
-      token.href === text.trim())
+    (/^(?:https?:\/\/|www\.)/i.test(text.trim()) || token.href === text.trim())
   ) {
     return " ";
   }
@@ -99,9 +105,7 @@ function previewTokenText(token: PreviewToken): string {
 }
 
 function safePreview(markdown: string): string | null {
-  const text = (
-    marked.lexer(markdown) as unknown as PreviewToken[]
-  )
+  const text = (marked.lexer(markdown) as unknown as PreviewToken[])
     .map(previewTokenText)
     .join(" ")
     .replace(/(?:https?:\/\/|www\.)\S+/gi, " ")
@@ -160,90 +164,122 @@ export function createNotificationFeedService(
   provider: FeedProvider,
   canAccess: AuthorizationCheck = defaultAuthorizationCheck(database)
 ) {
+  async function enrich(
+    recipientId: number,
+    notifications: ProviderNotification[]
+  ): Promise<EnrichedNotification[]> {
+    return Promise.all(
+      notifications.map(async (notification) => {
+        let actorCapacity = fallbackActorCapacity(notification);
+        try {
+          const context = database
+            .select({
+              eventIdentity: notificationEvents.identity,
+              eventKind: notificationEvents.kind,
+              eventActorCapacity: notificationEvents.actorCapacity,
+              eventOccurredAt: notificationEvents.occurredAt,
+              eventRecipientId: notificationEvents.recipientId,
+              eventCourseId: notificationEvents.courseId,
+              eventLessonId: notificationEvents.lessonId,
+              eventSourceCommentId: notificationEvents.sourceCommentId,
+              eventRootQuestionId: notificationEvents.rootQuestionId,
+              courseTitle: courses.title,
+              courseSlug: courses.slug,
+              lessonTitle: lessons.title,
+              sourceBody: comments.body,
+              sourceDeletedAt: comments.deletedAt,
+              sourceParentId: comments.parentId,
+            })
+            .from(notificationEvents)
+            .innerJoin(courses, eq(notificationEvents.courseId, courses.id))
+            .innerJoin(lessons, eq(notificationEvents.lessonId, lessons.id))
+            .innerJoin(modules, eq(lessons.moduleId, modules.id))
+            .innerJoin(
+              comments,
+              eq(notificationEvents.sourceCommentId, comments.id)
+            )
+            .where(
+              and(
+                eq(notificationEvents.identity, notification.eventIdentity),
+                eq(modules.courseId, courses.id),
+                eq(comments.lessonId, lessons.id)
+              )
+            )
+            .get();
+          actorCapacity = context?.eventActorCapacity ?? actorCapacity;
+
+          const valid =
+            context &&
+            context.eventKind === notification.eventKind &&
+            context.eventOccurredAt === notification.occurredAt &&
+            context.eventRecipientId === recipientId &&
+            context.eventRecipientId === notification.recipientId &&
+            context.eventCourseId === notification.courseId &&
+            context.eventLessonId === notification.lessonId &&
+            context.eventSourceCommentId === notification.sourceCommentId &&
+            context.eventRootQuestionId === notification.rootQuestionId &&
+            context.sourceDeletedAt === null &&
+            (notification.eventKind === "question.created"
+              ? context.sourceParentId === null &&
+                context.eventRootQuestionId === context.eventSourceCommentId
+              : context.sourceParentId === context.eventRootQuestionId);
+
+          if (
+            !valid ||
+            !(await canAccess(recipientId, notification.courseId))
+          ) {
+            return unavailable(notification, actorCapacity);
+          }
+
+          const anchor =
+            notification.eventKind === "staff-reply.created"
+              ? "reply"
+              : "question";
+          return {
+            ...notification,
+            actorCapacity,
+            availability: "available" as const,
+            courseTitle: context.courseTitle,
+            lessonTitle: context.lessonTitle,
+            preview: safePreview(context.sourceBody),
+            destinationUrl: `/courses/${context.courseSlug}/lessons/${context.eventLessonId}#${anchor}-${context.eventSourceCommentId}`,
+            destinationAvailable: true,
+          };
+        } catch {
+          return temporaryFailure(notification, actorCapacity);
+        }
+      })
+    );
+  }
+
   return {
     async list(recipientId: number): Promise<EnrichedNotification[]> {
-      return Promise.all(
-        provider.list(recipientId).map(async (notification) => {
-          let actorCapacity = fallbackActorCapacity(notification);
-          try {
-            const context = database
-              .select({
-                eventIdentity: notificationEvents.identity,
-                eventKind: notificationEvents.kind,
-                eventActorCapacity: notificationEvents.actorCapacity,
-                eventOccurredAt: notificationEvents.occurredAt,
-                eventRecipientId: notificationEvents.recipientId,
-                eventCourseId: notificationEvents.courseId,
-                eventLessonId: notificationEvents.lessonId,
-                eventSourceCommentId: notificationEvents.sourceCommentId,
-                eventRootQuestionId: notificationEvents.rootQuestionId,
-                courseTitle: courses.title,
-                courseSlug: courses.slug,
-                lessonTitle: lessons.title,
-                sourceBody: comments.body,
-                sourceDeletedAt: comments.deletedAt,
-                sourceParentId: comments.parentId,
-              })
-              .from(notificationEvents)
-              .innerJoin(courses, eq(notificationEvents.courseId, courses.id))
-              .innerJoin(lessons, eq(notificationEvents.lessonId, lessons.id))
-              .innerJoin(modules, eq(lessons.moduleId, modules.id))
-              .innerJoin(
-                comments,
-                eq(notificationEvents.sourceCommentId, comments.id)
-              )
-              .where(
-                and(
-                  eq(notificationEvents.identity, notification.eventIdentity),
-                  eq(modules.courseId, courses.id),
-                  eq(comments.lessonId, lessons.id)
-                )
-              )
-              .get();
-            actorCapacity = context?.eventActorCapacity ?? actorCapacity;
-
-            const valid =
-              context &&
-              context.eventKind === notification.eventKind &&
-              context.eventOccurredAt === notification.occurredAt &&
-              context.eventRecipientId === recipientId &&
-              context.eventRecipientId === notification.recipientId &&
-              context.eventCourseId === notification.courseId &&
-              context.eventLessonId === notification.lessonId &&
-              context.eventSourceCommentId === notification.sourceCommentId &&
-              context.eventRootQuestionId === notification.rootQuestionId &&
-              context.sourceDeletedAt === null &&
-              (notification.eventKind === "question.created"
-                ? context.sourceParentId === null &&
-                  context.eventRootQuestionId === context.eventSourceCommentId
-                : context.sourceParentId === context.eventRootQuestionId);
-
-            if (
-              !valid ||
-              !(await canAccess(recipientId, notification.courseId))
-            ) {
-              return unavailable(notification, actorCapacity);
-            }
-
-            const anchor =
-              notification.eventKind === "staff-reply.created"
-                ? "reply"
-                : "question";
+      return enrich(recipientId, provider.list(recipientId));
+    },
+    async listPage(
+      recipientId: number,
+      options: { cursor?: string; pageSize?: number } = {}
+    ) {
+      const page = provider.listPage
+        ? provider.listPage(recipientId, options)
+        : (() => {
+            const items = provider.list(recipientId);
+            const offset = options.cursor
+              ? Number.parseInt(options.cursor, 10)
+              : 0;
+            const safeOffset =
+              Number.isFinite(offset) && offset >= 0 ? offset : 0;
+            const pageSize = options.pageSize ?? 20;
+            const pageItems = items.slice(safeOffset, safeOffset + pageSize);
+            const nextOffset = safeOffset + pageItems.length;
             return {
-              ...notification,
-              actorCapacity,
-              availability: "available" as const,
-              courseTitle: context.courseTitle,
-              lessonTitle: context.lessonTitle,
-              preview: safePreview(context.sourceBody),
-              destinationUrl: `/courses/${context.courseSlug}/lessons/${context.eventLessonId}#${anchor}-${context.eventSourceCommentId}`,
-              destinationAvailable: true,
+              items: pageItems,
+              unreadCount: items.filter((item) => item.readAt === null).length,
+              nextCursor: nextOffset < items.length ? String(nextOffset) : null,
             };
-          } catch {
-            return temporaryFailure(notification, actorCapacity);
-          }
-        })
-      );
+          })();
+
+      return { ...page, items: await enrich(recipientId, page.items) };
     },
   };
 }
@@ -255,4 +291,16 @@ export function getNotificationFeed(
   return createNotificationFeedService(db, fakeKnockAdapter, canAccess).list(
     userId
   );
+}
+
+export function getNotificationFeedPage(
+  userId: number,
+  options: { cursor?: string; pageSize?: number } = {},
+  canAccess?: AuthorizationCheck
+) {
+  return createNotificationFeedService(
+    db,
+    fakeKnockAdapter,
+    canAccess
+  ).listPage(userId, options);
 }

@@ -45,7 +45,11 @@ interface SidebarProps {
   currentUser: CurrentUser | null;
   recentCourses?: RecentCourse[];
   isTeamAdmin?: boolean;
-  notificationFeed?: NotificationFeedItem[];
+  notificationFeed?: {
+    items: NotificationFeedItem[];
+    unreadCount: number;
+    nextCursor: string | null;
+  };
 }
 
 interface NavItem {
@@ -116,14 +120,12 @@ export function Sidebar({
   currentUser,
   recentCourses = [],
   isTeamAdmin = false,
-  notificationFeed = [],
+  notificationFeed = { items: [], unreadCount: 0, nextCursor: null },
 }: SidebarProps) {
   const currentUserRole = currentUser?.role ?? null;
   const [isDark, setIsDark] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
-  const authoritativeUnreadCount = notificationFeed.filter(
-    (item) => !item.readAt
-  ).length;
+  const authoritativeUnreadCount = notificationFeed.unreadCount;
   const [unreadCount, setUnreadCount] = useState(authoritativeUnreadCount);
 
   useEffect(() => {
@@ -133,6 +135,22 @@ export function Sidebar({
   useEffect(() => {
     setUnreadCount(authoritativeUnreadCount);
   }, [authoritativeUnreadCount]);
+
+  useEffect(() => {
+    const updateUnreadCount = (event: Event) => {
+      const count = (event as CustomEvent<unknown>).detail;
+      if (typeof count === "number") setUnreadCount(count);
+    };
+    window.addEventListener(
+      "cadence:notification-unread-count",
+      updateUnreadCount
+    );
+    return () =>
+      window.removeEventListener(
+        "cadence:notification-unread-count",
+        updateUnreadCount
+      );
+  }, []);
 
   function toggleDarkMode() {
     const next = !isDark;
@@ -176,7 +194,7 @@ export function Sidebar({
             className="fixed inset-0 z-40 overflow-y-auto border bg-popover p-4 text-popover-foreground shadow-lg sm:absolute sm:inset-auto sm:left-2 sm:top-12 sm:w-80 sm:max-w-[calc(100vw-1rem)] sm:rounded-md sm:p-3"
           >
             <NotificationFeed
-              items={notificationFeed}
+              initialPage={notificationFeed}
               onUnreadCountChange={setUnreadCount}
               onActivate={() => {
                 setUnreadCount((count) => Math.max(0, count - 1));
