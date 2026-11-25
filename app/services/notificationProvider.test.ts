@@ -1,5 +1,9 @@
-import { describe, expect, test } from "vitest";
-import { FakeKnockAdapter } from "~/services/notificationProvider";
+import { describe, expect, test, vi } from "vitest";
+import {
+  FakeKnockAdapter,
+  KnockNotificationProvider,
+  type NotificationPayload,
+} from "~/services/notificationProvider";
 
 describe("FakeKnockAdapter", () => {
   test("only the recipient can list or mark a Notification read", () => {
@@ -7,7 +11,6 @@ describe("FakeKnockAdapter", () => {
     provider.trigger("event:recipient:in_app", {
       eventIdentity: "question.created:42",
       eventKind: "question.created",
-      actorCapacity: "student",
       occurredAt: "2026-11-23T12:00:00.000Z",
       sourceCommentId: 42,
       rootQuestionId: 42,
@@ -29,7 +32,6 @@ describe("FakeKnockAdapter", () => {
     const payload = {
       eventIdentity: "question.created:42",
       eventKind: "question.created" as const,
-      actorCapacity: "student" as const,
       occurredAt: "2026-11-23T12:00:00.000Z",
       sourceCommentId: 42,
       rootQuestionId: 42,
@@ -53,7 +55,6 @@ describe("FakeKnockAdapter", () => {
       provider.trigger(id, {
         eventIdentity: `question.created:${id}`,
         eventKind: "question.created",
-        actorCapacity: "student",
         occurredAt,
         sourceCommentId: id === "old" ? 41 : 42,
         rootQuestionId: id === "old" ? 41 : 42,
@@ -115,7 +116,6 @@ describe("FakeKnockAdapter", () => {
     const notification = (id: number, occurredAt: string) => ({
       eventIdentity: `question.created:${id}`,
       eventKind: "question.created" as const,
-      actorCapacity: "student" as const,
       occurredAt,
       sourceCommentId: id,
       rootQuestionId: id,
@@ -141,7 +141,6 @@ describe("FakeKnockAdapter", () => {
     provider.trigger("one", {
       eventIdentity: "question.created:1",
       eventKind: "question.created",
-      actorCapacity: "student",
       occurredAt: "2026-11-23T12:00:00.000Z",
       sourceCommentId: 1,
       rootQuestionId: 1,
@@ -165,7 +164,6 @@ describe("FakeKnockAdapter", () => {
       provider.trigger(`same-event:${recipientId}`, {
         eventIdentity: "question.created:42",
         eventKind: "question.created",
-        actorCapacity: "student",
         occurredAt: "2026-11-23T12:00:00.000Z",
         sourceCommentId: 42,
         rootQuestionId: 42,
@@ -177,7 +175,6 @@ describe("FakeKnockAdapter", () => {
     provider.trigger("newer", {
       eventIdentity: "question.created:43",
       eventKind: "question.created",
-      actorCapacity: "student",
       occurredAt: "2026-11-23T13:00:00.000Z",
       sourceCommentId: 43,
       rootQuestionId: 43,
@@ -193,5 +190,95 @@ describe("FakeKnockAdapter", () => {
       "same-event:7",
     ]);
     expect(provider.list(8)[0]?.readAt).toBeNull();
+  });
+});
+
+describe("KnockNotificationProvider", () => {
+  test("triggers one stable person with the exact approved payload and identity", async () => {
+    const request = vi.fn(async () =>
+      new Response(JSON.stringify({ workflow_run_id: "run_123" }), {
+        status: 200,
+        headers: { "x-request-id": "req_123" },
+      })
+    );
+    const provider = new KnockNotificationProvider({
+      secretApiKey: "sk_test_secret",
+      request,
+    });
+    const payload = {
+      eventIdentity: "staff-reply.created:42",
+      eventKind: "staff-reply.created" as const,
+      occurredAt: "2026-11-24T10:00:00.000Z",
+      sourceCommentId: 42,
+      rootQuestionId: 40,
+      recipientId: 7,
+      courseId: 3,
+      lessonId: 9,
+    };
+
+    await expect(
+      provider.trigger("staff-reply.created:42:7:in_app", payload)
+    ).resolves.toEqual({ workflowRunId: "run_123", requestId: "req_123" });
+    expect(request).toHaveBeenCalledWith(
+      "https://api.knock.app/v1/workflows/staff-reply-created/trigger",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer sk_test_secret",
+          "Content-Type": "application/json",
+          "Idempotency-Key": "staff-reply.created:42:7:in_app",
+        },
+        body: JSON.stringify({ recipients: ["7"], data: payload }),
+      }
+    );
+  });
+
+  test("rejects a failed trigger with content-free provider evidence", async () => {
+    const provider = new KnockNotificationProvider({
+      secretApiKey: "sk_test_secret",
+      request: async () =>
+        new Response(JSON.stringify({ error: "may contain sensitive data" }), {
+          status: 422,
+          headers: { "x-request-id": "req_failed" },
+        }),
+    });
+
+    await expect(
+      provider.trigger("question.created:42:7:in_app", {
+        eventIdentity: "question.created:42",
+        eventKind: "question.created",
+        occurredAt: "2026-11-24T10:00:00.000Z",
+        sourceCommentId: 42,
+        rootQuestionId: 42,
+        recipientId: 7,
+        courseId: 3,
+        lessonId: 9,
+      })
+    ).rejects.toThrow("Knock trigger failed (status 422, request req_failed)");
+  });
+
+  test("rejects extra actor or content fields before contacting Knock", async () => {
+    const request = vi.fn<typeof fetch>();
+    const provider = new KnockNotificationProvider({
+      secretApiKey: "sk_test_secret",
+      request,
+    });
+    const unsafePayload = {
+      eventIdentity: "question.created:42",
+      eventKind: "question.created",
+      occurredAt: "2026-11-24T10:00:00.000Z",
+      sourceCommentId: 42,
+      rootQuestionId: 42,
+      recipientId: 7,
+      courseId: 3,
+      lessonId: 9,
+      actorId: 6,
+      preview: "private discussion text",
+    } as unknown as NotificationPayload;
+
+    await expect(
+      provider.trigger("question.created:42:7:in_app", unsafePayload)
+    ).rejects.toThrow();
+    expect(request).not.toHaveBeenCalled();
   });
 });

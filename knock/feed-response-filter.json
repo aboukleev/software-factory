@@ -1,0 +1,17 @@
+{
+  "actor": false,
+  "recipient": false,
+  "vars": false,
+  "data": {
+    "only": [
+      "courseId",
+      "eventIdentity",
+      "eventKind",
+      "lessonId",
+      "occurredAt",
+      "recipientId",
+      "rootQuestionId",
+      "sourceCommentId"
+    ]
+  }
+}

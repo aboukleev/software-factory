@@ -13,7 +13,9 @@
     "start": "react-router-serve ./build/server/index.js",
     "request-logger": "tsx request-logger/proxy.ts",
     "typecheck": "react-router typegen && tsc",
-    "test": "vitest run",
+    "test": "npm run validate:knock && vitest run",
+    "test:knock-contract": "vitest run --config vitest.knock-contract.config.ts",
+    "validate:knock": "node --import tsx scripts/validate-knock-workflows.ts",
     "test:e2e": "npm run db:seed && playwright test",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
@@ -48,6 +50,7 @@
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.14.0",
     "@clack/prompts": "^1.7.0",
+    "@knocklabs/client": "^0.23.1",
     "@playwright/test": "^1.65.1",
     "@react-router/dev": "8.3.0",
     "@tailwindcss/vite": "^4.1.13",

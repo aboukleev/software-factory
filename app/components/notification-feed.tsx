@@ -8,8 +8,10 @@ export type NotificationFeedItem = {
   occurredAt: string;
   eventKind: "question.created" | "staff-reply.created";
   actorCapacity: "student" | "instructor" | "platform_admin";
-  courseTitle: string;
-  lessonTitle: string;
+  availability: "available" | "unavailable" | "temporary_failure";
+  courseTitle: string | null;
+  lessonTitle: string | null;
+  preview: string | null;
   destinationUrl: string;
   destinationAvailable: boolean;
 };
@@ -345,35 +347,82 @@ export function NotificationFeed({
               const isUnread =
                 !optimisticAll && !item.readAt && !optimisticRead.has(item.id);
               const exactTime = new Date(item.occurredAt).toLocaleString();
+              const context =
+                item.availability === "available"
+                  ? `${item.courseTitle}. ${item.lessonTitle}. ${item.preview ? `${item.preview}. ` : ""}`
+                  : item.availability === "unavailable"
+                    ? "Conversation no longer available. "
+                    : "Details temporarily unavailable. ";
+              const accessibleName = `${isUnread ? "Unread. " : ""}${wording} ${context}${new Date(item.occurredAt).toLocaleString()}`;
+              const contents = (
+                <>
+                  <span className="block">{wording}</span>
+                  {item.availability === "available" && (
+                    <>
+                      <span className="block text-xs text-muted-foreground">
+                        {item.courseTitle} · {item.lessonTitle}
+                      </span>
+                      {item.preview && (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {item.preview}
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {item.availability === "unavailable" && (
+                    <span className="block text-xs text-muted-foreground">
+                      Conversation no longer available
+                    </span>
+                  )}
+                  {item.availability === "temporary_failure" && (
+                    <span className="block text-xs text-muted-foreground">
+                      Details temporarily unavailable
+                    </span>
+                  )}
+                  <time
+                    dateTime={item.occurredAt}
+                    title={exactTime}
+                    className="block text-xs text-muted-foreground"
+                  >
+                    {formatRelativeTime(item.occurredAt, now)}
+                    <span className="sr-only"> ({exactTime})</span>
+                  </time>
+                </>
+              );
               return (
                 <li key={item.id}>
-                  <Link
-                    to={item.destinationUrl}
-                    onClick={() => markItemRead(item.id, isUnread)}
-                    aria-label={`${isUnread ? "Unread. " : ""}${wording} ${item.courseTitle}. ${item.lessonTitle}. ${exactTime}`}
-                    className={cn(
-                      "block w-full break-words rounded-md border p-3 text-left text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2",
-                      isUnread ? "font-semibold" : "opacity-75"
-                    )}
-                  >
-                    <span className="block">{wording}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {item.courseTitle} · {item.lessonTitle}
-                    </span>
-                    {!item.destinationAvailable && (
-                      <span className="block text-xs text-muted-foreground">
-                        This conversation is unavailable.
-                      </span>
-                    )}
-                    <time
-                      dateTime={item.occurredAt}
-                      title={exactTime}
-                      className="block text-xs text-muted-foreground"
+                  {item.availability === "temporary_failure" ? (
+                    <div
+                      role="group"
+                      aria-label={accessibleName}
+                      className={cn(
+                        "rounded-md border p-3 text-sm",
+                        isUnread && "font-semibold"
+                      )}
                     >
-                      {formatRelativeTime(item.occurredAt, now)}
-                      <span className="sr-only"> ({exactTime})</span>
-                    </time>
-                  </Link>
+                      {contents}
+                      <button
+                        type="button"
+                        className="mt-1 underline focus-visible:outline-2 focus-visible:outline-offset-2"
+                        onClick={() => void refresh()}
+                        disabled={refreshing}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : (
+                    <Link
+                      to={item.destinationUrl}
+                      onClick={() => markItemRead(item.id, isUnread)}
+                      aria-label={accessibleName}
+                      className={cn(
+                        "block w-full rounded-md border p-3 text-left text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2",
+                        isUnread ? "font-semibold" : "opacity-75"
+                      )}
+                    >
+                      {contents}
+                    </Link>
+                  )}
                 </li>
               );
             })}

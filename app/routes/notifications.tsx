@@ -2,12 +2,22 @@ import { data } from "react-router";
 import { NotificationFeed } from "~/components/notification-feed";
 import { getCurrentUserId } from "~/lib/session";
 import { getNotificationFeedPage } from "~/services/notificationFeed.server";
+import { getAccess } from "~/lib/access.server";
 import type { Route } from "./+types/notifications";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const userId = await getCurrentUserId(request);
   if (!userId) throw data("You must be logged in", { status: 401 });
-  return { notificationFeed: getNotificationFeedPage(userId) };
+  return {
+    notificationFeed: await getNotificationFeedPage(
+      userId,
+      {},
+      async (recipientId, courseId) => {
+        const access = await getAccess(request, courseId);
+        return access.userId === recipientId && access.canViewContent;
+      }
+    ),
+  };
 }
 
 export default function NotificationsPage({

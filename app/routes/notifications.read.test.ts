@@ -19,7 +19,6 @@ function add(id: string, recipientId = 7) {
   fakeKnockAdapter.trigger(id, {
     eventIdentity: `question.created:${id}`,
     eventKind: "question.created",
-    actorCapacity: "student",
     occurredAt: "2026-11-23T12:00:00.000Z",
     sourceCommentId: 42,
     rootQuestionId: 42,
