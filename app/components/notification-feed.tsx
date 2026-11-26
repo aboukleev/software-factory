@@ -202,6 +202,10 @@ export function NotificationFeed({
   );
 
   useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
     onUnreadCountChange?.(unreadCount);
     window.dispatchEvent(
       new CustomEvent(unreadCountEvent, { detail: unreadCount })
@@ -342,8 +346,8 @@ export function NotificationFeed({
   }
 
   return (
-    <div className="flex min-h-0 flex-col" data-testid="notification-feed">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="notification-feed">
+      <div className="mb-2 flex min-h-11 items-center justify-between gap-3 pr-11">
         <h2 ref={headingRef} tabIndex={-1} className="font-semibold">
           Notification Feed
         </h2>
@@ -363,7 +367,7 @@ export function NotificationFeed({
         <button
           type="button"
           onClick={() => void markAllRead()}
-          className="mb-2 self-start rounded-md px-2 py-1 text-sm underline focus-visible:outline-2 focus-visible:outline-offset-2"
+          className="mb-2 min-h-11 self-start rounded-md px-3 py-2 text-sm underline focus-visible:outline-2 focus-visible:outline-offset-2"
         >
           Mark all read
         </button>
@@ -374,7 +378,7 @@ export function NotificationFeed({
           activity is unaffected.{" "}
           <button
             type="button"
-            className="underline"
+            className="min-h-11 rounded-md px-2 underline focus-visible:outline-2 focus-visible:outline-offset-2"
             onClick={() => void markAllRead()}
           >
             Retry
@@ -388,7 +392,7 @@ export function NotificationFeed({
             : "Notifications could not be loaded. Course activity is unaffected."}{" "}
           <button
             type="button"
-            className="underline"
+            className="min-h-11 rounded-md px-2 underline focus-visible:outline-2 focus-visible:outline-offset-2"
             onClick={() => void refresh()}
           >
             Retry Feed
@@ -398,7 +402,7 @@ export function NotificationFeed({
       {newPage && (
         <button
           type="button"
-          className="mb-2 self-start rounded-md px-2 py-1 text-sm underline"
+          className="mb-2 min-h-11 self-start rounded-md px-3 py-2 text-sm underline focus-visible:outline-2 focus-visible:outline-offset-2"
           onClick={() => void refresh(true)}
         >
           {newNotificationCount > 1
@@ -414,6 +418,13 @@ export function NotificationFeed({
         )}
         aria-busy={refreshing || loadingMore}
       >
+        {(refreshing || loadingMore) && (
+          <p className="sr-only" role="status" aria-live="polite">
+            {refreshing
+              ? "Updating Notifications"
+              : "Loading more Notifications"}
+          </p>
+        )}
         {items.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             New Questions and qualifying Replies will appear here. Course
@@ -426,20 +437,15 @@ export function NotificationFeed({
               const isUnread =
                 !optimisticAll && !item.readAt && !optimisticRead.has(item.id);
               const exactTime = new Date(item.occurredAt).toLocaleString();
-              const context =
-                item.availability === "available"
-                  ? `${item.courseTitle}. ${item.lessonTitle}. ${item.preview ? `${item.preview}. ` : ""}`
-                  : item.availability === "unavailable"
-                    ? "Conversation no longer available. "
-                    : "Details temporarily unavailable. ";
-              const accessibleName = `${isUnread ? "Unread. " : ""}${wording} ${context}${new Date(item.occurredAt).toLocaleString()}`;
+              const relativeTime = formatRelativeTime(item.occurredAt, now);
               const contents = (
                 <>
+                  {isUnread && <span className="sr-only">Unread. </span>}
                   <span className="block">{wording}</span>
                   {item.availability === "available" && (
                     <>
                       <span className="block text-xs text-muted-foreground">
-                        {item.courseTitle} · {item.lessonTitle}
+                        {item.courseTitle}. {item.lessonTitle}.
                       </span>
                       {item.preview && (
                         <span className="block truncate text-xs text-muted-foreground">
@@ -463,7 +469,7 @@ export function NotificationFeed({
                     title={exactTime}
                     className="block text-xs text-muted-foreground"
                   >
-                    {formatRelativeTime(item.occurredAt, now)}
+                    {relativeTime}
                     <span className="sr-only"> ({exactTime})</span>
                   </time>
                 </>
@@ -473,7 +479,6 @@ export function NotificationFeed({
                   {item.availability === "temporary_failure" ? (
                     <div
                       role="group"
-                      aria-label={accessibleName}
                       className={cn(
                         "rounded-md border p-3 text-sm",
                         isUnread && "font-semibold"
@@ -482,7 +487,7 @@ export function NotificationFeed({
                       {contents}
                       <button
                         type="button"
-                        className="mt-1 underline focus-visible:outline-2 focus-visible:outline-offset-2"
+                        className="mt-1 min-h-11 rounded-md px-2 underline focus-visible:outline-2 focus-visible:outline-offset-2"
                         onClick={() => void refresh()}
                         disabled={refreshing}
                       >
@@ -493,10 +498,9 @@ export function NotificationFeed({
                     <Link
                       to={item.destinationUrl}
                       onClick={() => markItemRead(item.id, isUnread)}
-                      aria-label={accessibleName}
                       className={cn(
-                        "block w-full rounded-md border p-3 text-left text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2",
-                        isUnread ? "font-semibold" : "opacity-75"
+                        "block min-h-11 w-full rounded-md border p-3 text-left text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 forced-colors:border-[ButtonBorder]",
+                        isUnread ? "font-semibold" : "font-normal"
                       )}
                     >
                       {contents}
@@ -513,7 +517,7 @@ export function NotificationFeed({
             type="button"
             disabled={loadingMore}
             onClick={() => void loadMore()}
-            className="mt-3 rounded-md border px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
+            className="mt-3 min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
           >
             {loadingMore ? "Loading…" : "Load more"}
           </button>
@@ -521,7 +525,7 @@ export function NotificationFeed({
       </div>
       {!full && (
         <Link
-          className="mt-3 text-sm underline"
+          className="mt-3 flex min-h-11 items-center self-start rounded-md px-1 text-sm underline focus-visible:outline-2 focus-visible:outline-offset-2"
           to="/notifications"
           onClick={onOpenFull}
         >

@@ -90,7 +90,9 @@ test("explicit reads reconcile failures without blocking navigation", async ({
   await bell.click();
   await expect(feed.getByText("1 unread")).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(feed).toHaveCSS("position", "fixed");
+  await expect(
+    feed.locator('xpath=ancestor::*[@role="dialog"]')
+  ).toHaveCSS("position", "fixed");
   await page.setViewportSize({ width: 1280, height: 800 });
   await feed.getByRole("link", { name: "Open full Notification Feed" }).click();
   await expect(page).toHaveURL(/\/notifications$/);
