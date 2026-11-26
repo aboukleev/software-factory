@@ -15,6 +15,7 @@
     "typecheck": "react-router typegen && tsc",
     "test": "npm run validate:knock && vitest run",
     "test:knock-contract": "vitest run --config vitest.knock-contract.config.ts",
+    "notifications:soak-report": "tsx scripts/notification-soak-report.ts",
     "validate:knock": "node --import tsx scripts/validate-knock-workflows.ts",
     "test:e2e": "npm run db:seed && playwright test",
     "test:watch": "vitest",

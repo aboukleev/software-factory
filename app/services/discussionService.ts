@@ -7,6 +7,7 @@ import {
   lessons,
   modules,
   notificationDeliveries,
+  notificationOperationControls,
   notificationEvents,
   users,
   UserRole,
@@ -14,6 +15,7 @@ import {
 import { MAX_COMMENT_LENGTH, MIN_COMMENT_LENGTH } from "~/lib/comments";
 import type { NotificationPayload } from "~/services/notificationProvider";
 import { wakeNotificationDispatcher } from "~/services/notificationDispatcherInstance.server";
+import { createNotificationOperations } from "~/services/notificationOperations.server";
 
 type DiscussionDatabase = typeof db;
 
@@ -35,6 +37,7 @@ export function createDiscussionPost(
   wakeDispatcher: () => void = wakeNotificationDispatcher
 ) {
   let shouldWakeDispatcher = false;
+  const createdDeliveryIds: number[] = [];
   const result = database.transaction((tx) => {
     const trimmed = input.body.trim();
     if (trimmed.length < MIN_COMMENT_LENGTH) {
@@ -94,8 +97,14 @@ export function createDiscussionPost(
       })
       .returning()
       .get();
+    const creationEnabled =
+      tx
+        .select({ enabled: notificationOperationControls.creationEnabled })
+        .from(notificationOperationControls)
+        .where(eq(notificationOperationControls.id, 1))
+        .get()?.enabled ?? true;
 
-    if (input.parentId === null) {
+    if (creationEnabled && input.parentId === null) {
       const actor = tx
         .select({ role: users.role })
         .from(users)
@@ -145,7 +154,8 @@ export function createDiscussionPost(
           courseId: course.id,
           lessonId: input.lessonId,
         };
-        tx.insert(notificationDeliveries)
+        const delivery = tx
+          .insert(notificationDeliveries)
           .values({
             notificationEventId: event.id,
             recipientId: course.instructorId,
@@ -156,10 +166,12 @@ export function createDiscussionPost(
             status: "queued",
             nextAttemptAt: source.createdAt,
           })
-          .run();
+          .returning({ id: notificationDeliveries.id })
+          .get();
+        createdDeliveryIds.push(delivery.id);
         shouldWakeDispatcher = true;
       }
-    } else if (parent) {
+    } else if (creationEnabled && parent) {
       const qualifyingQuestion = tx
         .select()
         .from(notificationEvents)
@@ -214,7 +226,8 @@ export function createDiscussionPost(
             courseId: course.id,
             lessonId: input.lessonId,
           };
-          tx.insert(notificationDeliveries)
+          const delivery = tx
+            .insert(notificationDeliveries)
             .values({
               notificationEventId: event.id,
               recipientId,
@@ -225,7 +238,9 @@ export function createDiscussionPost(
               status: "queued",
               nextAttemptAt: source.createdAt,
             })
-            .run();
+            .returning({ id: notificationDeliveries.id })
+            .get();
+          createdDeliveryIds.push(delivery.id);
           shouldWakeDispatcher = true;
         }
       }
@@ -234,6 +249,10 @@ export function createDiscussionPost(
     return { source, course };
   });
 
+  const operations = createNotificationOperations({ database });
+  for (const deliveryId of createdDeliveryIds) {
+    operations.recordTransition(deliveryId, null, "queued", "created");
+  }
   if (shouldWakeDispatcher) wakeDispatcher();
   return result;
 }

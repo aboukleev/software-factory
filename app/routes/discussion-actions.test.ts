@@ -8,6 +8,7 @@ import {
   lessons,
   modules,
   notificationDeliveries,
+  notificationDeliveryTransitions,
   notificationEvents,
   UserRole,
   users,
@@ -66,6 +67,7 @@ function seedLesson() {
 }
 
 beforeEach(() => {
+  db.delete(notificationDeliveryTransitions).run();
   db.delete(notificationDeliveries).run();
   db.delete(notificationEvents).run();
   db.delete(comments).run();

@@ -16,6 +16,7 @@ import {
   type NotificationPage,
   type ProviderNotification,
 } from "~/services/notificationProvider";
+import { notificationOperations } from "~/services/notificationOperations.server";
 
 type NotificationDatabase = typeof db;
 type FeedProvider = {
@@ -288,6 +289,8 @@ export function getNotificationFeed(
   userId: number,
   canAccess?: AuthorizationCheck
 ) {
+  if (!notificationOperations.getControls().feedEnabled)
+    return Promise.resolve([]);
   return createNotificationFeedService(db, fakeKnockAdapter, canAccess).list(
     userId
   );
@@ -298,6 +301,9 @@ export function getNotificationFeedPage(
   options: { cursor?: string; pageSize?: number } = {},
   canAccess?: AuthorizationCheck
 ) {
+  if (!notificationOperations.getControls().feedEnabled) {
+    return Promise.resolve({ items: [], unreadCount: 0, nextCursor: null });
+  }
   return createNotificationFeedService(
     db,
     fakeKnockAdapter,
