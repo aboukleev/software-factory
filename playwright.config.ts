@@ -21,7 +21,20 @@ export default defineConfig({
   projects: [
     {
       name: "desktop-chrome",
-      use: { ...devices["Desktop Chrome"], channel: "chrome" },
+      use: {
+        ...devices["Desktop Chrome"],
+        channel: "chrome",
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+    {
+      name: "narrow-chrome",
+      testMatch: /notification-feed-accessibility\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        channel: "chrome",
+        viewport: { width: 390, height: 844 },
+      },
     },
   ],
 });
