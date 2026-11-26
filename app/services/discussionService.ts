@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "~/db";
 import {
   comments,
@@ -28,6 +28,67 @@ type CreateDiscussionPostInput = {
   parentId: number | null;
   body: string;
 };
+
+type DeleteDiscussionPostInput = {
+  commentId: number;
+  userId: number;
+  isStaff: boolean;
+};
+
+export function deleteDiscussionPost(
+  input: DeleteDiscussionPostInput,
+  database: DiscussionDatabase = db,
+  now: () => Date = () => new Date()
+) {
+  return database.transaction((tx) => {
+    const existing = tx
+      .select()
+      .from(comments)
+      .where(eq(comments.id, input.commentId))
+      .get();
+    if (!existing) throw new Error("Comment not found");
+    if (existing.userId !== input.userId && !input.isStaff) {
+      throw new Error("You can only delete your own comments");
+    }
+    if (existing.deletedAt !== null) return existing;
+
+    const deletedAt = now().toISOString();
+    const deleted = tx
+      .update(comments)
+      .set({ deletedAt })
+      .where(eq(comments.id, input.commentId))
+      .returning()
+      .get();
+
+    const event = tx
+      .select({ id: notificationEvents.id })
+      .from(notificationEvents)
+      .where(eq(notificationEvents.sourceCommentId, input.commentId))
+      .get();
+    if (event) {
+      tx.update(notificationDeliveries)
+        .set({
+          status: "cancelled",
+          terminalAt: deletedAt,
+          errorCategory: "source_deleted_before_acceptance",
+          leaseOwner: null,
+          leaseExpiresAt: null,
+        })
+        .where(
+          and(
+            eq(notificationDeliveries.notificationEventId, event.id),
+            inArray(notificationDeliveries.status, [
+              "queued",
+              "retry_scheduled",
+            ])
+          )
+        )
+        .run();
+    }
+
+    return deleted;
+  });
+}
 
 export function createDiscussionPost(
   input: CreateDiscussionPostInput,
@@ -182,7 +243,11 @@ export function createDiscussionPost(
             ? "instructor"
             : null;
 
-      if (qualifyingQuestion && actorCapacity) {
+      if (
+        qualifyingQuestion &&
+        qualifyingQuestion.actorId !== null &&
+        actorCapacity
+      ) {
         const identity = `staff-reply.created:${source.id}`;
         const recipientId = qualifyingQuestion.actorId;
         const event = tx

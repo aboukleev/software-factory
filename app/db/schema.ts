@@ -369,9 +369,9 @@ export const notificationEvents = sqliteTable(
     rootQuestionId: integer("root_question_id")
       .notNull()
       .references(() => comments.id),
-    actorId: integer("actor_id")
-      .notNull()
-      .references(() => users.id),
+    // Account erasure can remove the identifying actor reference while the
+    // content-free Notification remains eligible for its normal expiry.
+    actorId: integer("actor_id").references(() => users.id),
     actorCapacity: text("actor_capacity")
       .notNull()
       .$type<"student" | "instructor" | "platform_admin">(),
@@ -491,7 +491,9 @@ export const notificationDeliveryIncidents = sqliteTable(
       .notNull()
       .references(() => notificationDeliveries.id),
     providerEventId: text("provider_event_id").notNull(),
-    kind: text("kind").notNull().$type<"physical_duplicate">(),
+    kind: text("kind")
+      .notNull()
+      .$type<"physical_duplicate" | "privacy" | "reliability">(),
     evidence: text("evidence").notNull(),
     createdAt: text("created_at")
       .notNull()

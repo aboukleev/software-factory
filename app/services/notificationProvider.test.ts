@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   FakeKnockAdapter,
   KnockNotificationProvider,
+  UnsupportedProviderOperationError,
   type NotificationPayload,
 } from "~/services/notificationProvider";
 
@@ -194,6 +195,51 @@ describe("FakeKnockAdapter", () => {
 });
 
 describe("KnockNotificationProvider", () => {
+  test("refuses to represent archive as per-message permanent deletion", () => {
+    const provider = new KnockNotificationProvider({
+      secretApiKey: "sk_test_secret",
+      request: vi.fn(),
+    });
+
+    expect(() =>
+      provider.permanentlyDeleteNotification({
+        messageId: "msg_123",
+        idempotencyKey: "question.created:42:7:in_app",
+        recipientId: 7,
+      })
+    ).toThrow(
+      new UnsupportedProviderOperationError("per-message permanent deletion")
+    );
+  });
+
+  test("uses archive only as reversible containment and hard-deletes a whole User", async () => {
+    const request = vi.fn(async () => new Response(null, { status: 204 }));
+    const provider = new KnockNotificationProvider({
+      secretApiKey: "sk_test_secret",
+      request,
+    });
+
+    await provider.archiveNotification("msg/123");
+    await provider.deleteUser(7);
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      "https://api.knock.app/v1/messages/msg%2F123/archived",
+      {
+        method: "PUT",
+        headers: { Authorization: "Bearer sk_test_secret" },
+      }
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      "https://api.knock.app/v1/users/7",
+      {
+        method: "DELETE",
+        headers: { Authorization: "Bearer sk_test_secret" },
+      }
+    );
+  });
+
   test("triggers one stable person with the exact approved payload and identity", async () => {
     const request = vi.fn(
       async () =>

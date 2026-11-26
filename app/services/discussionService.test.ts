@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { createDiscussionPost } from "~/services/discussionService";
+import {
+  createDiscussionPost,
+  deleteDiscussionPost,
+} from "~/services/discussionService";
 import { createTestDb, seedBaseData } from "~/test/setup";
 import {
   comments,
@@ -1124,5 +1127,90 @@ describe("createDiscussionPost", () => {
       ).toThrow("Not authorized to post in this course");
     }
     expect(database.select().from(comments).all()).toEqual([]);
+  });
+});
+
+describe("deleteDiscussionPost", () => {
+  test("atomically cancels unfinished Delivery when its source is deleted", () => {
+    const database = createTestDb();
+    const { user, course } = seedBaseData(database);
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const courseModule = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: courseModule.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      database,
+      () => undefined
+    ).source;
+
+    deleteDiscussionPost(
+      { commentId: question.id, userId: user.id, isStaff: false },
+      database,
+      () => new Date("2026-01-02T00:00:00.000Z")
+    );
+
+    expect(database.select().from(notificationDeliveries).get()).toMatchObject({
+      status: "cancelled",
+      terminalAt: "2026-01-02T00:00:00.000Z",
+      errorCategory: "source_deleted_before_acceptance",
+    });
+  });
+
+  test("keeps an accepted Notification for generic unavailable-content behavior", async () => {
+    const database = createTestDb();
+    const { user, course } = seedBaseData(database);
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const courseModule = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: courseModule.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question",
+      },
+      database,
+      () => undefined
+    ).source;
+    await createNotificationDispatcher({
+      database,
+      provider: new FakeKnockAdapter(),
+    }).runOnce();
+
+    deleteDiscussionPost(
+      { commentId: question.id, userId: user.id, isStaff: false },
+      database
+    );
+
+    expect(database.select().from(notificationDeliveries).get()?.status).toBe(
+      "accepted"
+    );
   });
 });

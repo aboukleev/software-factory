@@ -26,8 +26,14 @@ in-app channel API response filter, and enable enhanced security. The contract
 proves enhanced security by rejecting an unsigned public-key request. It then
 uses a disposable numeric recipient, verifies both workflows, signed grants,
 response filtering, idempotency, provider references, cursor paging, a real-time
-hint, Read Notification state, and archive behavior, and permanently deletes the
-recipient in cleanup.
+hint and Read Notification state. It verifies that archive is reversible and
+therefore is not permanent deletion, then permanently deletes the disposable
+recipient and verifies that all of that recipient's messages are removed.
+
+Knock does not expose per-message permanent deletion or configurable 90-day
+Feed retention. Cadence must not delete a whole Knock User to expire one item.
+This is a release blocker for the 90-day erasure criterion; archive remains
+available only for immediate incident containment.
 
 Fake mode remains the credential-free default outside Production. Production
 requires `NOTIFICATION_PROVIDER_MODE=knock`; incomplete configuration throws
