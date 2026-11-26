@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.14.0",
+    "@axe-core/playwright": "^4.14.1",
     "@clack/prompts": "^1.7.0",
     "@knocklabs/client": "^0.23.1",
     "@playwright/test": "^1.65.1",
