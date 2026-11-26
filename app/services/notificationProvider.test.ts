@@ -195,11 +195,12 @@ describe("FakeKnockAdapter", () => {
 
 describe("KnockNotificationProvider", () => {
   test("triggers one stable person with the exact approved payload and identity", async () => {
-    const request = vi.fn(async () =>
-      new Response(JSON.stringify({ workflow_run_id: "run_123" }), {
-        status: 200,
-        headers: { "x-request-id": "req_123" },
-      })
+    const request = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ workflow_run_id: "run_123" }), {
+          status: 200,
+          headers: { "x-request-id": "req_123" },
+        })
     );
     const provider = new KnockNotificationProvider({
       secretApiKey: "sk_test_secret",
@@ -280,5 +281,116 @@ describe("KnockNotificationProvider", () => {
       provider.trigger("question.created:42:7:in_app", unsafePayload)
     ).rejects.toThrow();
     expect(request).not.toHaveBeenCalled();
+  });
+
+  test("resolves a workflow-run reference to its confirmed in-app message", async () => {
+    const request = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "msg_123",
+                status: "delivered",
+                updated_at: "2026-11-24T10:00:01.000Z",
+              },
+            ],
+          })
+        )
+    );
+    const provider = new KnockNotificationProvider({
+      secretApiKey: "sk_test_secret",
+      request,
+    });
+
+    await expect(
+      provider.lookupOutcome("run_123", "question.created:42:7:in_app")
+    ).resolves.toEqual({
+      kind: "delivered",
+      messageIds: ["msg_123"],
+      occurredAt: "2026-11-24T10:00:01.000Z",
+    });
+    expect(request).toHaveBeenCalledWith(
+      "https://api.knock.app/v1/messages?workflow_run_id=run_123&page_size=50",
+      { headers: { Authorization: "Bearer sk_test_secret" } }
+    );
+  });
+
+  test("reports zero, failed, and duplicate workflow-run messages safely", async () => {
+    const responses = [
+      { items: [] },
+      {
+        items: [
+          {
+            workflow_run_id: "run_pending",
+            status: "processing",
+            error_count: 0,
+            updated_at: "2026-11-24T10:00:00.000Z",
+          },
+        ],
+      },
+      {
+        items: [
+          {
+            id: "msg_failed",
+            status: "not_sent",
+            updated_at: "2026-11-24T10:00:01.000Z",
+          },
+        ],
+      },
+      {
+        items: [
+          {
+            id: "msg_one",
+            status: "delivered",
+            updated_at: "2026-11-24T10:00:01.000Z",
+          },
+          {
+            id: "msg_two",
+            status: "delivered",
+            updated_at: "2026-11-24T10:00:02.000Z",
+          },
+        ],
+      },
+      { items: [] },
+      {
+        items: [
+          {
+            workflow_run_id: "run_skipped",
+            status: "completed",
+            error_count: 0,
+            updated_at: "2026-11-24T10:00:03.000Z",
+          },
+        ],
+      },
+    ];
+    const provider = new KnockNotificationProvider({
+      secretApiKey: "sk_test_secret",
+      request: vi.fn(
+        async () => new Response(JSON.stringify(responses.shift()))
+      ),
+    });
+
+    await expect(
+      provider.lookupOutcome("run_pending", "question.created:1:7:in_app")
+    ).resolves.toEqual({ kind: "pending" });
+    await expect(
+      provider.lookupOutcome("run_failed", "question.created:1:7:in_app")
+    ).resolves.toMatchObject({
+      kind: "permanently_failed",
+      messageIds: ["msg_failed"],
+    });
+    await expect(
+      provider.lookupOutcome("run_duplicate", "question.created:1:7:in_app")
+    ).resolves.toMatchObject({
+      kind: "unknown",
+      messageIds: ["msg_one", "msg_two"],
+    });
+    await expect(
+      provider.lookupOutcome("run_skipped", "question.created:1:7:in_app")
+    ).resolves.toEqual({
+      kind: "skipped",
+      occurredAt: "2026-11-24T10:00:03.000Z",
+    });
   });
 });

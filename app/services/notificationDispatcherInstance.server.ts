@@ -1,7 +1,9 @@
 import { createNotificationDispatcher } from "~/services/notificationDispatcher.server";
+import { createNotificationOutcomeService } from "~/services/notificationOutcomeService.server";
 import { notificationProvider } from "~/services/notificationProvider.server";
 
 let dispatcher: ReturnType<typeof createNotificationDispatcher> | undefined;
+let stopOutcomeReconciliation: (() => Promise<void>) | undefined;
 
 function getDispatcher() {
   if (!dispatcher) {
@@ -9,8 +11,12 @@ function getDispatcher() {
       provider: notificationProvider,
     });
     dispatcher.start();
+    stopOutcomeReconciliation = createNotificationOutcomeService({
+      provider: notificationProvider,
+    }).startPeriodicReconciliation();
     const shutdown = () => {
       void dispatcher?.stop();
+      void stopOutcomeReconciliation?.();
     };
     process.once("SIGTERM", shutdown);
     process.once("SIGINT", shutdown);
@@ -23,7 +29,7 @@ export function wakeNotificationDispatcher() {
 }
 
 export async function stopNotificationDispatcher() {
-  await dispatcher?.stop();
+  await Promise.all([dispatcher?.stop(), stopOutcomeReconciliation?.()]);
 }
 
 // Route modules import the discussion service during server startup. Starting

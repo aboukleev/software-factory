@@ -428,6 +428,10 @@ export const notificationDeliveries = sqliteTable(
     errorCategory: text("error_category"),
     providerRequestId: text("provider_request_id"),
     providerWorkflowRunId: text("provider_workflow_run_id"),
+    providerMessageId: text("provider_message_id"),
+    outcomeEvidence: text("outcome_evidence"),
+    outcomeCheckedAt: text("outcome_checked_at"),
+    outcomeNextCheckAt: text("outcome_next_check_at"),
     createdAt: text("created_at")
       .notNull()
       .$defaultFn(() => new Date().toISOString()),
@@ -448,6 +452,54 @@ export const notificationDeliveries = sqliteTable(
     index("notification_deliveries_lease_idx").on(
       table.status,
       table.leaseExpiresAt
+    ),
+    index("notification_deliveries_outcome_due_idx").on(
+      table.status,
+      table.outcomeNextCheckAt
+    ),
+  ]
+);
+
+export const notificationOutcomeEvents = sqliteTable(
+  "notification_outcome_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    deliveryId: integer("delivery_id")
+      .notNull()
+      .references(() => notificationDeliveries.id),
+    providerEventId: text("provider_event_id").notNull(),
+    kind: text("kind").notNull(),
+    providerMessageIds: text("provider_message_ids"),
+    occurredAt: text("occurred_at").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    uniqueIndex("notification_outcome_events_provider_event_unique").on(
+      table.providerEventId
+    ),
+    index("notification_outcome_events_delivery_idx").on(table.deliveryId),
+  ]
+);
+
+export const notificationDeliveryIncidents = sqliteTable(
+  "notification_delivery_incidents",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    deliveryId: integer("delivery_id")
+      .notNull()
+      .references(() => notificationDeliveries.id),
+    providerEventId: text("provider_event_id").notNull(),
+    kind: text("kind").notNull().$type<"physical_duplicate">(),
+    evidence: text("evidence").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    uniqueIndex("notification_delivery_incidents_provider_event_unique").on(
+      table.providerEventId
     ),
   ]
 );

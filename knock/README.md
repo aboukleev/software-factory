@@ -32,3 +32,6 @@ recipient in cleanup.
 Fake mode remains the credential-free default outside Production. Production
 requires `NOTIFICATION_PROVIDER_MODE=knock`; incomplete configuration throws
 instead of falling back.
+
+Authenticated outcome webhooks additionally require `KNOCK_WEBHOOK_SECRET`,
+the shared secret configured for the Knock outbound webhook endpoint.
