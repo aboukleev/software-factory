@@ -9,6 +9,7 @@ import {
   notificationDeliveryIncidents,
   notificationDeliveryTransitions,
   notificationEvents,
+  notificationOutcomeEvents,
 } from "~/db/schema";
 import { createDiscussionPost } from "~/services/discussionService";
 import { createNotificationDispatcher } from "~/services/notificationDispatcher.server";
@@ -80,13 +81,38 @@ function fixture(occurredAt = "2026-01-01T00:00:00.000Z") {
 }
 
 describe("Notification lifecycle", () => {
-  test("permanently removes a Notification at exactly 90 days from Event occurrence", async () => {
+  test("archives a Notification and removes its local lifecycle records at exactly 90 days", async () => {
     const f = fixture();
     await createNotificationDispatcher({
       database: f.database,
       provider: f.provider,
       now: () => new Date("2026-01-01T00:00:01.000Z"),
     }).runOnce();
+    const messageId = f.provider.list(f.recipientId)[0]!.id;
+    f.database
+      .update(notificationDeliveries)
+      .set({ status: "delivered", providerMessageId: messageId })
+      .where(eq(notificationDeliveries.id, f.deliveryId))
+      .run();
+    f.database
+      .insert(notificationOutcomeEvents)
+      .values({
+        deliveryId: f.deliveryId,
+        providerEventId: "delivered:provider-event",
+        kind: "delivered",
+        providerMessageIds: JSON.stringify([messageId]),
+        occurredAt: "2026-01-01T00:00:02.000Z",
+      })
+      .run();
+    f.database
+      .insert(notificationDeliveryIncidents)
+      .values({
+        deliveryId: f.deliveryId,
+        providerEventId: "resolved:incident",
+        kind: "reliability",
+        evidence: JSON.stringify({ outcome: "resolved" }),
+      })
+      .run();
 
     expect(
       await createNotificationLifecycleService({
@@ -96,8 +122,18 @@ describe("Notification lifecycle", () => {
       }).expireNotifications()
     ).toEqual({ expired: 1, blocked: 0 });
     expect(f.provider.list(f.recipientId)).toEqual([]);
+    expect(f.provider.listArchived(f.recipientId)).toHaveLength(1);
     expect(f.database.select().from(notificationEvents).all()).toEqual([]);
     expect(f.database.select().from(notificationDeliveries).all()).toEqual([]);
+    expect(
+      f.database.select().from(notificationDeliveryTransitions).all()
+    ).toEqual([]);
+    expect(f.database.select().from(notificationOutcomeEvents).all()).toEqual(
+      []
+    );
+    expect(
+      f.database.select().from(notificationDeliveryIncidents).all()
+    ).toEqual([]);
   });
 
   test("does not extend lifetime when a Notification is read or authorization changes", async () => {
@@ -312,14 +348,22 @@ describe("Notification lifecycle", () => {
     });
   });
 
-  test("reports provider erasure gaps instead of treating archive as permanent deletion", async () => {
+  test("retains local records and records a privacy incident when expiry archive fails", async () => {
     const f = fixture();
     await createNotificationDispatcher({
       database: f.database,
       provider: f.provider,
       now: () => new Date("2026-01-01T00:00:01.000Z"),
     }).runOnce();
-    f.provider.disablePermanentMessageDeletion();
+    const messageId = f.provider.list(f.recipientId)[0]!.id;
+    f.database
+      .update(notificationDeliveries)
+      .set({ status: "delivered", providerMessageId: messageId })
+      .where(eq(notificationDeliveries.id, f.deliveryId))
+      .run();
+    f.provider.archiveNotification = () => {
+      throw new Error("provider unavailable");
+    };
 
     expect(
       await createNotificationLifecycleService({
@@ -336,10 +380,11 @@ describe("Notification lifecycle", () => {
       expect.objectContaining({
         kind: "privacy",
         evidence: JSON.stringify({
-          operation: "per_message_permanent_deletion",
-          outcome: "unsupported",
+          operation: "archive_for_notification_expiry",
+          outcome: "failed",
           archiveIsDeletion: false,
-          releaseBlocked: true,
+          providerResidueAccepted: true,
+          retryRequired: true,
         }),
       }),
     ]);
@@ -349,5 +394,8 @@ describe("Notification lifecycle", () => {
 test("retention policy is anchored to exact elapsed time", () => {
   expect(notificationRetentionPolicy.visibleLifetimeMs).toBe(
     90 * 24 * 60 * 60 * 1_000
+  );
+  expect(notificationRetentionPolicy.providerExpiryMechanism).toBe(
+    "archive_with_accepted_provider_residue"
   );
 });

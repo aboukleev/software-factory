@@ -27,7 +27,7 @@ const PROVIDER_VISIBLE_STATUSES = [
 type LifecycleDatabase = typeof db;
 type LifecycleProvider = Pick<
   NotificationProvider,
-  "permanentlyDeleteNotification" | "archiveNotification" | "deleteUser"
+  "archiveNotification" | "deleteUser"
 >;
 
 export function createNotificationLifecycleService({
@@ -87,8 +87,6 @@ export function createNotificationLifecycleService({
       .select({
         eventId: notificationEvents.id,
         deliveryId: notificationDeliveries.id,
-        recipientId: notificationDeliveries.recipientId,
-        idempotencyKey: notificationDeliveries.idempotencyKey,
         providerMessageId: notificationDeliveries.providerMessageId,
       })
       .from(notificationEvents)
@@ -107,32 +105,29 @@ export function createNotificationLifecycleService({
     let blocked = 0;
     for (const candidate of candidates) {
       try {
-        if (!provider.permanentlyDeleteNotification) {
+        if (!provider.archiveNotification || !candidate.providerMessageId) {
           throw new UnsupportedProviderOperationError(
-            "per-message permanent deletion"
+            "message archive for Notification expiry"
           );
         }
-        await provider.permanentlyDeleteNotification({
-          messageId: candidate.providerMessageId,
-          idempotencyKey: candidate.idempotencyKey,
-          recipientId: candidate.recipientId,
-        });
+        await provider.archiveNotification(candidate.providerMessageId);
         deleteDeliveryAndOrphanedEvent(candidate.deliveryId, candidate.eventId);
         expired += 1;
       } catch (error) {
         blocked += 1;
         recordIncident(
           candidate.deliveryId,
-          `retention-erasure-blocked:${candidate.deliveryId}`,
+          `expiry-archive-failed:${candidate.deliveryId}`,
           "privacy",
           JSON.stringify({
-            operation: "per_message_permanent_deletion",
+            operation: "archive_for_notification_expiry",
             outcome:
               error instanceof UnsupportedProviderOperationError
                 ? "unsupported"
                 : "failed",
             archiveIsDeletion: false,
-            releaseBlocked: true,
+            providerResidueAccepted: true,
+            retryRequired: true,
           })
         );
       }
@@ -296,5 +291,5 @@ export function createNotificationLifecycleService({
 export const notificationRetentionPolicy = {
   visibleLifetimeMs: VISIBLE_LIFETIME_MS,
   lifecycleIntervalMs: LIFECYCLE_INTERVAL_MS,
-  providerPerMessageErasure: "required_but_unsupported_by_knock" as const,
+  providerExpiryMechanism: "archive_with_accepted_provider_residue" as const,
 };
