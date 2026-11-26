@@ -7,6 +7,7 @@ import {
   notificationEvents,
   notificationOutcomeEvents,
 } from "~/db/schema";
+import { createNotificationOperations } from "~/services/notificationOperations.server";
 
 export type DeliveryStatus = typeof notificationDeliveries.$inferSelect.status;
 
@@ -69,6 +70,7 @@ export function createNotificationOutcomeService({
   provider: OutcomeProvider;
   now?: () => Date;
 }) {
+  const operations = createNotificationOperations({ database, now });
   function getDelivery(deliveryId: number) {
     const delivery = database
       .select()
@@ -93,7 +95,7 @@ export function createNotificationOutcomeService({
         `Invalid Delivery transition ${current.status} -> ${nextStatus}`
       );
     }
-    database
+    const changed = database
       .update(notificationDeliveries)
       .set({ ...values, status: nextStatus })
       .where(
@@ -102,7 +104,18 @@ export function createNotificationOutcomeService({
           eq(notificationDeliveries.status, current.status)
         )
       )
-      .run();
+      .returning({ status: notificationDeliveries.status })
+      .get();
+    if (changed) {
+      operations.recordTransition(
+        deliveryId,
+        current.status,
+        nextStatus,
+        typeof values.errorCategory === "string"
+          ? values.errorCategory
+          : nextStatus
+      );
+    }
     return getDelivery(deliveryId);
   }
 

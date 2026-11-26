@@ -10,6 +10,7 @@ import {
   modules,
   notificationDeliveries,
   notificationEvents,
+  notificationOperationControls,
   UserRole,
   users,
 } from "~/db/schema";
@@ -24,6 +25,50 @@ async function dispatchQueued(
 }
 
 describe("createDiscussionPost", () => {
+  test("commits discussion content without creating Notification work while creation is paused", () => {
+    const database = createTestDb();
+    const { user, course } = seedBaseData(database);
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    database
+      .insert(notificationOperationControls)
+      .values({
+        id: 1,
+        creationEnabled: false,
+        dispatchEnabled: true,
+        feedEnabled: true,
+        updatedAt: "2026-11-26T12:00:00.000Z",
+      })
+      .run();
+
+    const result = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Still committed",
+      },
+      database,
+      vi.fn()
+    );
+
+    expect(result.source.body).toBe("Still committed");
+    expect(database.select().from(notificationEvents).all()).toEqual([]);
+    expect(database.select().from(notificationDeliveries).all()).toEqual([]);
+  });
+
   test("atomically records and delivers an enrolled Student Question", async () => {
     const database = createTestDb();
     const { user, instructor, course } = seedBaseData(database);

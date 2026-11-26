@@ -3,8 +3,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { loader } from "./api.notifications.credentials";
 
 const session = vi.hoisted(() => ({ getCurrentUserId: vi.fn() }));
+const controls = vi.hoisted(() => ({ feedEnabled: true }));
 vi.mock("~/lib/session", () => ({
   getCurrentUserId: session.getCurrentUserId,
+}));
+vi.mock("~/services/notificationOperations.server", () => ({
+  notificationOperations: {
+    getControls: () => ({ ...controls }),
+  },
 }));
 
 const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -55,5 +61,17 @@ describe("GET /api/notifications/credentials", () => {
         ),
       } as never)
     ).rejects.toMatchObject({ init: { status: 401 } });
+  });
+
+  test("does not issue a Feed token while presentation is paused", async () => {
+    controls.feedEnabled = false;
+    await expect(
+      loader({
+        request: new Request(
+          "http://cadence.test/api/notifications/credentials"
+        ),
+      } as never)
+    ).rejects.toMatchObject({ init: { status: 404 } });
+    controls.feedEnabled = true;
   });
 });
