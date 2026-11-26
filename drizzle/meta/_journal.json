@@ -85,6 +85,13 @@
       "when": 1795634622309,
       "tag": "0011_legal_moira_mactaggert",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795636033250,
+      "tag": "0012_smart_slayback",
+      "breakpoints": true
     }
   ]
 }

@@ -62,4 +62,5 @@ export default [
     "routes/api.notifications.credentials.ts"
   ),
   route("api/notifications/session", "routes/api.notifications.session.ts"),
+  route("api/notifications/outcomes", "routes/api.notifications.outcomes.ts"),
 ] satisfies RouteConfig;
