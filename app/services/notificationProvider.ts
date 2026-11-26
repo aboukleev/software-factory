@@ -44,6 +44,20 @@ export interface NotificationProvider {
     workflowRunId: string,
     idempotencyKey: string
   ): Promise<ProviderDeliveryOutcome>;
+  permanentlyDeleteNotification?(input: {
+    messageId: string | null;
+    idempotencyKey: string;
+    recipientId: number;
+  }): Promise<void> | void;
+  archiveNotification?(messageId: string): Promise<void> | void;
+  deleteUser?(userId: number): Promise<void> | void;
+}
+
+export class UnsupportedProviderOperationError extends Error {
+  constructor(readonly operation: string) {
+    super(`Notification provider does not support ${operation}`);
+    this.name = "UnsupportedProviderOperationError";
+  }
 }
 
 export class NotificationProviderError extends Error {
@@ -245,6 +259,50 @@ export class KnockNotificationProvider implements NotificationProvider {
     }
     return { kind: "pending" as const, messageIds: [message.id] };
   }
+
+  permanentlyDeleteNotification(_input: {
+    messageId: string | null;
+    idempotencyKey: string;
+    recipientId: number;
+  }) {
+    // Knock deliberately exposes archive/unarchive, but no per-message hard
+    // delete. Never turn reversible archive into purported retention erasure.
+    throw new UnsupportedProviderOperationError(
+      "per-message permanent deletion"
+    );
+  }
+
+  async archiveNotification(messageId: string) {
+    const response = await this.request(
+      `${this.apiBaseUrl}/messages/${encodeURIComponent(messageId)}/archived`,
+      {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${this.secretApiKey}` },
+      }
+    );
+    if (!response.ok) {
+      throw new NotificationProviderError(
+        `Knock archive failed (status ${response.status})`,
+        response.status
+      );
+    }
+  }
+
+  async deleteUser(userId: number) {
+    const response = await this.request(
+      `${this.apiBaseUrl}/users/${encodeURIComponent(String(userId))}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${this.secretApiKey}` },
+      }
+    );
+    if (!response.ok && response.status !== 404) {
+      throw new NotificationProviderError(
+        `Knock User deletion failed (status ${response.status})`,
+        response.status
+      );
+    }
+  }
 }
 
 export function parseRetryAfter(value: string, nowMs: number) {
@@ -264,6 +322,7 @@ export type NotificationPage = {
 /** Local/test Knock substitute. It deliberately stores only the payload allowlist. */
 export class FakeKnockAdapter implements NotificationProvider {
   private notifications = new Map<string, ProviderNotification>();
+  private archived = new Set<string>();
   private workflowRuns = new Map<string, string>();
   private pending: Promise<void>[] = [];
   private rejectNextRead = false;
@@ -312,8 +371,50 @@ export class FakeKnockAdapter implements NotificationProvider {
 
   list(recipientId: number) {
     return [...this.notifications.values()]
-      .filter((item) => item.recipientId === recipientId)
+      .filter(
+        (item) =>
+          item.recipientId === recipientId && !this.archived.has(item.id)
+      )
       .reverse();
+  }
+
+  listArchived(recipientId: number) {
+    return [...this.notifications.values()].filter(
+      (item) => item.recipientId === recipientId && this.archived.has(item.id)
+    );
+  }
+
+  permanentlyDeleteNotification(input: {
+    messageId: string | null;
+    idempotencyKey: string;
+  }) {
+    const id = input.messageId ?? input.idempotencyKey;
+    this.notifications.delete(id);
+    this.archived.delete(id);
+  }
+
+  archiveNotification(messageId: string) {
+    if (!this.notifications.has(messageId)) {
+      throw new Error(`Notification ${messageId} was not found`);
+    }
+    this.archived.add(messageId);
+  }
+
+  deleteUser(userId: number) {
+    for (const [id, item] of this.notifications) {
+      if (item.recipientId === userId) {
+        this.notifications.delete(id);
+        this.archived.delete(id);
+      }
+    }
+  }
+
+  disablePermanentMessageDeletion() {
+    this.permanentlyDeleteNotification = () => {
+      throw new UnsupportedProviderOperationError(
+        "per-message permanent deletion"
+      );
+    };
   }
 
   listPage(
@@ -364,6 +465,7 @@ export class FakeKnockAdapter implements NotificationProvider {
 
   reset() {
     this.notifications.clear();
+    this.archived.clear();
     this.workflowRuns.clear();
     this.pending = [];
     this.rejectNextRead = false;

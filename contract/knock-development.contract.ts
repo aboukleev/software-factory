@@ -116,6 +116,43 @@ async function waitForFeedCount(count: number) {
   throw new Error(`Timed out waiting for ${count} Knock Feed items`);
 }
 
+async function waitForFeedMessage(messageId: string, present: boolean) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const response = await fetch(
+      `${apiBaseUrl}/users/${stableRecipientId}/feeds/${config.feedChannelId}?mode=compact&page_size=50`,
+      { headers: publicHeaders }
+    );
+    const current = feedSchema.parse(await readJson(response));
+    if (current.entries.some((entry) => entry.id === messageId) === present) {
+      return;
+    }
+    await wait(500);
+  }
+  throw new Error(
+    `Timed out waiting for Knock Feed message to be ${present ? "present" : "absent"}`
+  );
+}
+
+async function waitForRecipientMessagesToBeDeleted() {
+  // Knock processes hard deletion asynchronously and documents that it can
+  // take up to ten minutes before all associated data disappears.
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    const query = new URLSearchParams({
+      recipient: stableRecipientId!,
+      page_size: "50",
+    });
+    const response = await fetch(`${apiBaseUrl}/messages?${query}`, {
+      headers: secretHeaders,
+    });
+    const result = z
+      .object({ items: z.array(z.object({ id: z.string() }).passthrough()) })
+      .parse(await readJson(response));
+    if (result.items.length === 0) return;
+    await wait(1_000);
+  }
+  throw new Error("Timed out waiting for Knock User messages to be deleted");
+}
+
 async function waitForDeliveredOutcome(
   provider: KnockNotificationProvider,
   workflowRunId: string,
@@ -357,15 +394,23 @@ describe("Knock Development security contract", () => {
       readFeed.entries.find((entry) => entry.id === message.id)?.read_at
     ).toEqual(expect.any(String));
 
+    await provider.archiveNotification(message.id);
+    await waitForFeedMessage(message.id, false);
+
+    // Archive is reversible containment, not deletion: unarchiving restores
+    // the same provider message.
     await readJson(
       await fetch(`${apiBaseUrl}/messages/${message.id}/archived`, {
-        method: "PUT",
-        headers: publicHeaders,
+        method: "DELETE",
+        headers: secretHeaders,
       })
     );
-    const afterArchive = await waitForFeedCount(1);
-    expect(afterArchive.entries.some((entry) => entry.id === message.id)).toBe(
-      false
-    );
+    await waitForFeedMessage(message.id, true);
+
+    // Knock has no per-message hard-delete operation. Deleting the disposable
+    // User is the verified permanent mechanism and removes every recipient
+    // message, so it must never be used to expire one Feed item.
+    await provider.deleteUser(Number(stableRecipientId));
+    await waitForRecipientMessagesToBeDeleted();
   });
 });
