@@ -35,6 +35,10 @@ Feed retention. Cadence must not delete a whole Knock User to expire one item.
 This is a release blocker for the 90-day erasure criterion; archive remains
 available only for immediate incident containment.
 
+Knock processes User hard deletion asynchronously and documents that associated
+data cleanup can take up to ten minutes. The live contract waits for that full
+window before failing its whole-User deletion assertion.
+
 Fake mode remains the credential-free default outside Production. Production
 requires `NOTIFICATION_PROVIDER_MODE=knock`; incomplete configuration throws
 instead of falling back.

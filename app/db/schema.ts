@@ -506,6 +506,54 @@ export const notificationDeliveryIncidents = sqliteTable(
   ]
 );
 
+export const notificationOperationControls = sqliteTable(
+  "notification_operation_controls",
+  {
+    id: integer("id").primaryKey(),
+    creationEnabled: integer("creation_enabled", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    dispatchEnabled: integer("dispatch_enabled", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    feedEnabled: integer("feed_enabled", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    updatedAt: text("updated_at").notNull(),
+  }
+);
+
+export const notificationDispatcherHeartbeats = sqliteTable(
+  "notification_dispatcher_heartbeats",
+  {
+    id: integer("id").primaryKey(),
+    observedAt: text("observed_at").notNull(),
+  }
+);
+
+export const notificationDeliveryTransitions = sqliteTable(
+  "notification_delivery_transitions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    deliveryId: integer("delivery_id")
+      .notNull()
+      .references(() => notificationDeliveries.id),
+    notificationEventId: integer("notification_event_id")
+      .notNull()
+      .references(() => notificationEvents.id),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status").notNull(),
+    outcomeCode: text("outcome_code").notNull(),
+    occurredAt: text("occurred_at").notNull(),
+  },
+  (table) => [
+    index("notification_delivery_transitions_delivery_idx").on(
+      table.deliveryId,
+      table.occurredAt
+    ),
+  ]
+);
+
 export const videoWatchEvents = sqliteTable("video_watch_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id")

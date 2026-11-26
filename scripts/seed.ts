@@ -64,10 +64,13 @@ async function seed() {
 
   // Drop and recreate tables for a clean seed
   sqlite.exec(`
+    DROP TABLE IF EXISTS notification_delivery_transitions;
     DROP TABLE IF EXISTS notification_delivery_incidents;
     DROP TABLE IF EXISTS notification_outcome_events;
     DROP TABLE IF EXISTS notification_deliveries;
     DROP TABLE IF EXISTS notification_events;
+    DROP TABLE IF EXISTS notification_dispatcher_heartbeats;
+    DROP TABLE IF EXISTS notification_operation_controls;
     DROP TABLE IF EXISTS comments;
     DROP TABLE IF EXISTS course_ratings;
     DROP TABLE IF EXISTS video_watch_events;
@@ -95,6 +98,16 @@ async function seed() {
   migrate(db, { migrationsFolder });
 
   console.log("Tables created.");
+
+  db.insert(schema.notificationOperationControls)
+    .values({
+      id: 1,
+      creationEnabled: true,
+      dispatchEnabled: true,
+      feedEnabled: true,
+      updatedAt: new Date().toISOString(),
+    })
+    .run();
 
   // Every count this script reports is read back out of the database. A written
   // -down count is a count that goes stale the first time the data around it

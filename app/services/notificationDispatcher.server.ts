@@ -13,6 +13,7 @@ import {
   type NotificationPayload,
   type NotificationProvider,
 } from "~/services/notificationProvider";
+import { createNotificationOperations } from "~/services/notificationOperations.server";
 
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
 const DEFAULT_LEASE_MS = 120_000;
@@ -47,6 +48,12 @@ type ClaimedDelivery = {
   providerPayload: string;
   attemptCount: number;
   occurredAt: string;
+  previousStatus: "queued" | "retry_scheduled" | "attempting";
+};
+
+type ExpiredDelivery = {
+  id: number;
+  previousStatus: ClaimedDelivery["previousStatus"];
 };
 
 type Failure = {
@@ -87,6 +94,7 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const now = options.now ?? (() => new Date());
   const random = options.random ?? Math.random;
+  const operations = createNotificationOperations({ database, now });
   let stopped = true;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let wakePending = false;
@@ -106,7 +114,7 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
     );
   }
 
-  function claimDue(limit: number): ClaimedDelivery[] {
+  function claimDue(limit: number) {
     const claimTime = now();
     const nowIso = claimTime.toISOString();
     const leaseExpiresAt = new Date(
@@ -116,6 +124,7 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
       const candidates = tx
         .select({
           id: notificationDeliveries.id,
+          status: notificationDeliveries.status,
           occurredAt: notificationEvents.occurredAt,
         })
         .from(notificationDeliveries)
@@ -131,12 +140,14 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
         .limit(limit * 4)
         .all();
       const claimed: ClaimedDelivery[] = [];
+      const expired: ExpiredDelivery[] = [];
 
       for (const candidate of candidates) {
         if (claimed.length === limit) break;
         const cutoff = Date.parse(candidate.occurredAt) + RETRY_WINDOW_MS;
         if (claimTime.getTime() >= cutoff) {
-          tx.update(notificationDeliveries)
+          const changed = tx
+            .update(notificationDeliveries)
             .set({
               status: "permanently_failed",
               terminalAt: nowIso,
@@ -150,7 +161,15 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
                 eligibleAt(nowIso)
               )
             )
-            .run();
+            .returning({ id: notificationDeliveries.id })
+            .get();
+          if (changed) {
+            expired.push({
+              id: changed.id,
+              previousStatus:
+                candidate.status as ExpiredDelivery["previousStatus"],
+            });
+          }
           continue;
         }
         const row = tx
@@ -174,9 +193,15 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
             attemptCount: notificationDeliveries.attemptCount,
           })
           .get();
-        if (row) claimed.push({ ...row, occurredAt: candidate.occurredAt });
+        if (row)
+          claimed.push({
+            ...row,
+            occurredAt: candidate.occurredAt,
+            previousStatus:
+              candidate.status as ClaimedDelivery["previousStatus"],
+          });
       }
-      return claimed;
+      return { claimed, expired };
     });
   }
 
@@ -200,9 +225,15 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
 
   function finish(
     deliveryId: number,
-    values: Partial<typeof notificationDeliveries.$inferInsert>
+    values: Partial<typeof notificationDeliveries.$inferInsert>,
+    outcomeCode: string
   ) {
-    database
+    const before = database
+      .select({ status: notificationDeliveries.status })
+      .from(notificationDeliveries)
+      .where(eq(notificationDeliveries.id, deliveryId))
+      .get();
+    const changed = database
       .update(notificationDeliveries)
       .set({ ...values, leaseOwner: null, leaseExpiresAt: null })
       .where(
@@ -212,27 +243,44 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
           eq(notificationDeliveries.leaseOwner, ownerId)
         )
       )
-      .run();
+      .returning({ status: notificationDeliveries.status })
+      .get();
+    if (before && changed && before.status !== changed.status) {
+      operations.recordTransition(
+        deliveryId,
+        before.status,
+        changed.status,
+        outcomeCode
+      );
+    }
   }
 
   function scheduleFailure(delivery: ClaimedDelivery, failure: Failure) {
     const failureTime = now();
     const failureIso = failureTime.toISOString();
     if (!failure.retryable) {
-      finish(delivery.id, {
-        status: "permanently_failed",
-        terminalAt: failureIso,
-        errorCategory: failure.category,
-      });
+      finish(
+        delivery.id,
+        {
+          status: "permanently_failed",
+          terminalAt: failureIso,
+          errorCategory: failure.category,
+        },
+        failure.category
+      );
       return;
     }
     const baseDelay = RETRY_DELAYS_MS[delivery.attemptCount - 1];
     if (baseDelay === undefined) {
-      finish(delivery.id, {
-        status: "permanently_failed",
-        terminalAt: failureIso,
-        errorCategory: "retry_exhausted",
-      });
+      finish(
+        delivery.id,
+        {
+          status: "permanently_failed",
+          terminalAt: failureIso,
+          errorCategory: "retry_exhausted",
+        },
+        "retry_exhausted"
+      );
       return;
     }
     const jitteredDelay = Math.round(baseDelay * (0.8 + random() * 0.4));
@@ -240,27 +288,39 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
     const nextAttempt = failureTime.getTime() + delay;
     const cutoff = Date.parse(delivery.occurredAt) + RETRY_WINDOW_MS;
     if (delay < 0 || nextAttempt >= cutoff) {
-      finish(delivery.id, {
-        status: "permanently_failed",
-        terminalAt: failureIso,
-        errorCategory: "retry_window_expired",
-      });
+      finish(
+        delivery.id,
+        {
+          status: "permanently_failed",
+          terminalAt: failureIso,
+          errorCategory: "retry_window_expired",
+        },
+        "retry_window_expired"
+      );
       return;
     }
-    finish(delivery.id, {
-      status: "retry_scheduled",
-      nextAttemptAt: new Date(nextAttempt).toISOString(),
-      errorCategory: failure.category,
-    });
+    finish(
+      delivery.id,
+      {
+        status: "retry_scheduled",
+        nextAttemptAt: new Date(nextAttempt).toISOString(),
+        errorCategory: failure.category,
+      },
+      failure.category
+    );
   }
 
   async function processDelivery(delivery: ClaimedDelivery) {
     if (sourceOrRecipientWasDeleted(delivery.id)) {
-      finish(delivery.id, {
-        status: "cancelled",
-        terminalAt: now().toISOString(),
-        errorCategory: "source_or_recipient_deleted",
-      });
+      finish(
+        delivery.id,
+        {
+          status: "cancelled",
+          terminalAt: now().toISOString(),
+          errorCategory: "source_or_recipient_deleted",
+        },
+        "source_or_recipient_deleted"
+      );
       return;
     }
 
@@ -270,11 +330,15 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
         JSON.parse(delivery.providerPayload)
       );
     } catch {
-      finish(delivery.id, {
-        status: "permanently_failed",
-        terminalAt: now().toISOString(),
-        errorCategory: "invalid_immutable_payload",
-      });
+      finish(
+        delivery.id,
+        {
+          status: "permanently_failed",
+          terminalAt: now().toISOString(),
+          errorCategory: "invalid_immutable_payload",
+        },
+        "invalid_immutable_payload"
+      );
       return;
     }
 
@@ -317,13 +381,17 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
         timerUnref(timeoutTimer);
       });
       const result = await Promise.race([providerCall, timeoutFailure]);
-      finish(delivery.id, {
-        status: "accepted",
-        acceptedAt: now().toISOString(),
-        errorCategory: null,
-        providerRequestId: result?.requestId ?? null,
-        providerWorkflowRunId: result?.workflowRunId ?? null,
-      });
+      finish(
+        delivery.id,
+        {
+          status: "accepted",
+          acceptedAt: now().toISOString(),
+          errorCategory: null,
+          providerRequestId: result?.requestId ?? null,
+          providerWorkflowRunId: result?.workflowRunId ?? null,
+        },
+        "provider_accepted"
+      );
     } catch (error) {
       scheduleFailure(delivery, classifyFailure(error));
     } finally {
@@ -334,7 +402,29 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
   }
 
   async function runBatch() {
-    const claimed = claimDue(concurrency);
+    operations.recordHeartbeat();
+    if (!operations.getControls().dispatchEnabled) return;
+    const { claimed, expired } = claimDue(concurrency);
+    for (const delivery of expired) {
+      operations.recordTransition(
+        delivery.id,
+        delivery.previousStatus,
+        "permanently_failed",
+        "retry_window_expired"
+      );
+    }
+    for (const delivery of claimed) {
+      operations.recordTransition(
+        delivery.id,
+        delivery.previousStatus,
+        "attempting",
+        delivery.previousStatus === "attempting"
+          ? "expired_lease_recovered"
+          : delivery.attemptCount === 1
+            ? "first_attempt"
+            : "retry_attempt"
+      );
+    }
     await Promise.all(claimed.map(processDelivery));
   }
 

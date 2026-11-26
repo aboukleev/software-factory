@@ -3,6 +3,7 @@ import { db } from "~/db";
 import {
   notificationDeliveries,
   notificationDeliveryIncidents,
+  notificationDeliveryTransitions,
   notificationEvents,
   notificationOutcomeEvents,
 } from "~/db/schema";
@@ -45,6 +46,9 @@ export function createNotificationLifecycleService({
         .run();
       tx.delete(notificationDeliveryIncidents)
         .where(eq(notificationDeliveryIncidents.deliveryId, deliveryId))
+        .run();
+      tx.delete(notificationDeliveryTransitions)
+        .where(eq(notificationDeliveryTransitions.deliveryId, deliveryId))
         .run();
       tx.delete(notificationDeliveries)
         .where(eq(notificationDeliveries.id, deliveryId))
@@ -188,6 +192,11 @@ export function createNotificationLifecycleService({
           tx.delete(notificationDeliveryIncidents)
             .where(
               inArray(notificationDeliveryIncidents.deliveryId, deliveryIds)
+            )
+            .run();
+          tx.delete(notificationDeliveryTransitions)
+            .where(
+              inArray(notificationDeliveryTransitions.deliveryId, deliveryIds)
             )
             .run();
           tx.delete(notificationDeliveries)

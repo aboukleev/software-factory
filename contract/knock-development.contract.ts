@@ -134,7 +134,9 @@ async function waitForFeedMessage(messageId: string, present: boolean) {
 }
 
 async function waitForRecipientMessagesToBeDeleted() {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  // Knock processes hard deletion asynchronously and documents that it can
+  // take up to ten minutes before all associated data disappears.
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     const query = new URLSearchParams({
       recipient: stableRecipientId!,
       page_size: "50",
@@ -146,7 +148,7 @@ async function waitForRecipientMessagesToBeDeleted() {
       .object({ items: z.array(z.object({ id: z.string() }).passthrough()) })
       .parse(await readJson(response));
     if (result.items.length === 0) return;
-    await wait(500);
+    await wait(1_000);
   }
   throw new Error("Timed out waiting for Knock User messages to be deleted");
 }

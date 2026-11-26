@@ -6,7 +6,9 @@ import {
   lessons,
   modules,
   notificationDeliveries,
+  notificationDeliveryTransitions,
   notificationEvents,
+  notificationOperationControls,
   UserRole,
   users,
 } from "~/db/schema";
@@ -164,6 +166,31 @@ afterEach(() => {
 });
 
 describe("Notification dispatcher", () => {
+  test("preserves durable due work while dispatch claims are paused", async () => {
+    const database = createTestDb();
+    const queued = queuedDelivery(database);
+    database
+      .insert(notificationOperationControls)
+      .values({
+        id: 1,
+        creationEnabled: true,
+        dispatchEnabled: false,
+        feedEnabled: true,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      })
+      .run();
+    const provider = new FakeKnockAdapter();
+
+    await createNotificationDispatcher({
+      database,
+      provider,
+      now: () => new Date("2026-01-01T00:00:01.000Z"),
+    }).runOnce();
+
+    expect(deliveryRow(database, queued.delivery.id).status).toBe("queued");
+    expect(provider.list(queued.recipientId)).toEqual([]);
+  });
+
   test("resumes queued work after restart and records provider acceptance", async () => {
     const database = createTestDb();
     const queued = queuedDelivery(database);
@@ -455,6 +482,21 @@ describe("Notification dispatcher", () => {
       status: "permanently_failed",
       errorCategory: "retry_window_expired",
     });
+    expect(
+      database
+        .select()
+        .from(notificationDeliveryTransitions)
+        .where(
+          eq(notificationDeliveryTransitions.deliveryId, queued.delivery.id)
+        )
+        .all()
+    ).toEqual([
+      expect.objectContaining({
+        fromStatus: "queued",
+        toStatus: "permanently_failed",
+        outcomeCode: "retry_window_expired",
+      }),
+    ]);
   });
 
   test("cancels a deleted trigger but ignores later role and Enrollment changes", async () => {

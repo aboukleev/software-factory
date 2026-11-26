@@ -7,6 +7,7 @@ import {
   modules,
   notificationDeliveries,
   notificationDeliveryIncidents,
+  notificationDeliveryTransitions,
   notificationEvents,
 } from "~/db/schema";
 import { createDiscussionPost } from "~/services/discussionService";
@@ -137,6 +138,9 @@ describe("Notification lifecycle", () => {
 
     expect(lifecycle.cleanupTerminalRecords()).toBe(1);
     expect(f.database.select().from(notificationDeliveries).all()).toEqual([]);
+    expect(
+      f.database.select().from(notificationDeliveryTransitions).all()
+    ).toEqual([]);
     expect(f.database.select().from(notificationEvents).all()).toEqual([]);
   });
 
@@ -203,6 +207,9 @@ describe("Notification lifecycle", () => {
     expect(deleteUser).toHaveBeenCalledWith(f.recipientId);
     expect(f.provider.list(f.recipientId)).toEqual([]);
     expect(f.database.select().from(notificationDeliveries).all()).toEqual([]);
+    expect(
+      f.database.select().from(notificationDeliveryTransitions).all()
+    ).toEqual([]);
     expect(f.database.select().from(notificationEvents).all()).toEqual([]);
   });
 
