@@ -31,9 +31,16 @@ therefore is not permanent deletion, then permanently deletes the disposable
 recipient and verifies that all of that recipient's messages are removed.
 
 Knock does not expose per-message permanent deletion or configurable 90-day
-Feed retention. Cadence must not delete a whole Knock User to expire one item.
-This is a release blocker for the 90-day erasure criterion; archive remains
-available only for immediate incident containment.
+Feed retention. At exactly 90 days, Cadence archives the individual message for
+recipient-visible expiry and then removes its local lifecycle records without a
+local archive or tombstone. This explicitly accepted limitation leaves
+reversible provider-side residue: archive is not permanent deletion and must
+never be reported as such. If archive fails, Cadence retains the local records,
+records a privacy incident, and retries on a later lifecycle pass.
+
+Cadence must not delete a whole Knock User to expire one item because that would
+also destroy unrelated Feed history. Whole-User hard deletion remains reserved
+for account erasure.
 
 Knock processes User hard deletion asynchronously and documents that associated
 data cleanup can take up to ten minutes. The live contract waits for that full
