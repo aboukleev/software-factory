@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ProviderDeliveryOutcome } from "~/services/notificationOutcomeService.server";
 
 export const notificationPayloadSchema = z
   .object({
@@ -38,7 +39,11 @@ export interface NotificationProvider {
     idempotencyKey: string,
     payload: NotificationPayload,
     options?: { signal?: AbortSignal }
-  ): void | Promise<void | ProviderTriggerResult>;
+  ): void | ProviderTriggerResult | Promise<void | ProviderTriggerResult>;
+  lookupOutcome?(
+    workflowRunId: string,
+    idempotencyKey: string
+  ): Promise<ProviderDeliveryOutcome>;
 }
 
 export class NotificationProviderError extends Error {
@@ -129,6 +134,117 @@ export class KnockNotificationProvider implements NotificationProvider {
       .parse(await response.json());
     return { workflowRunId: result.workflow_run_id, requestId };
   }
+
+  async lookupOutcome(workflowRunId: string, idempotencyKey: string) {
+    const query = new URLSearchParams({
+      workflow_run_id: workflowRunId,
+      page_size: "50",
+    });
+    const response = await this.request(
+      `${this.apiBaseUrl}/messages?${query}`,
+      {
+        headers: { Authorization: `Bearer ${this.secretApiKey}` },
+      }
+    );
+    if (!response.ok) {
+      throw new NotificationProviderError(
+        `Knock outcome lookup failed (status ${response.status})`,
+        response.status
+      );
+    }
+    const result = z
+      .object({
+        items: z.array(
+          z.object({
+            id: z.string().min(1),
+            status: z.enum([
+              "queued",
+              "sent",
+              "delivered",
+              "delivery_attempted",
+              "undelivered",
+              "not_sent",
+              "bounced",
+            ]),
+            updated_at: z.string().datetime({ offset: true }),
+          })
+        ),
+      })
+      .parse(await response.json());
+    const messages = result.items;
+    if (messages.length === 0) {
+      const recipientId = idempotencyKey.split(":").at(-2);
+      if (!recipientId) return { kind: "pending" as const };
+      const runQuery = new URLSearchParams({
+        recipient: recipientId,
+        page_size: "50",
+      });
+      const runResponse = await this.request(
+        `${this.apiBaseUrl}/workflow_recipient_runs?${runQuery}`,
+        { headers: { Authorization: `Bearer ${this.secretApiKey}` } }
+      );
+      if (!runResponse.ok) {
+        throw new NotificationProviderError(
+          `Knock workflow-run lookup failed (status ${runResponse.status})`,
+          runResponse.status
+        );
+      }
+      const runs = z
+        .object({
+          items: z.array(
+            z.object({
+              workflow_run_id: z.string().min(1),
+              status: z.enum([
+                "queued",
+                "processing",
+                "paused",
+                "completed",
+                "cancelled",
+              ]),
+              error_count: z.number().int().nonnegative(),
+              updated_at: z.string().datetime({ offset: true }),
+            })
+          ),
+        })
+        .parse(await runResponse.json());
+      const run = runs.items.find(
+        (candidate) => candidate.workflow_run_id === workflowRunId
+      );
+      if (!run || ["queued", "processing", "paused"].includes(run.status)) {
+        return { kind: "pending" as const };
+      }
+      if (run.status === "completed" && run.error_count === 0) {
+        return { kind: "skipped" as const, occurredAt: run.updated_at };
+      }
+      return {
+        kind: "permanently_failed" as const,
+        occurredAt: run.updated_at,
+      };
+    }
+    if (messages.length > 1) {
+      return {
+        kind: "unknown" as const,
+        messageIds: messages.map((message) => message.id),
+        occurredAt: messages[0]?.updated_at,
+      };
+    }
+    const message = messages[0]!;
+    if (message.status === "delivered") {
+      return {
+        kind: "delivered" as const,
+        messageIds: [message.id],
+        occurredAt: message.updated_at,
+      };
+    }
+    if (["undelivered", "not_sent", "bounced"].includes(message.status)) {
+      return {
+        kind: "permanently_failed" as const,
+        messageIds: [message.id],
+        occurredAt: message.updated_at,
+      };
+    }
+    return { kind: "pending" as const, messageIds: [message.id] };
+  }
 }
 
 export function parseRetryAfter(value: string, nowMs: number) {
@@ -148,23 +264,43 @@ export type NotificationPage = {
 /** Local/test Knock substitute. It deliberately stores only the payload allowlist. */
 export class FakeKnockAdapter implements NotificationProvider {
   private notifications = new Map<string, ProviderNotification>();
+  private workflowRuns = new Map<string, string>();
   private pending: Promise<void>[] = [];
   private rejectNextRead = false;
   private rejectNextMarkAll = false;
 
   trigger(idempotencyKey: string, payload: NotificationPayload) {
-    if (this.notifications.has(idempotencyKey)) return;
+    const workflowRunId = `fake-run:${idempotencyKey}`;
+    if (this.notifications.has(idempotencyKey)) {
+      return { workflowRunId, requestId: `fake-request:${idempotencyKey}` };
+    }
     this.notifications.set(idempotencyKey, {
       ...payload,
       id: idempotencyKey,
       idempotencyKey,
       readAt: null,
     });
+    this.workflowRuns.set(workflowRunId, idempotencyKey);
+    return { workflowRunId, requestId: `fake-request:${idempotencyKey}` };
+  }
+
+  async lookupOutcome(workflowRunId: string, idempotencyKey: string) {
+    const key = this.workflowRuns.get(workflowRunId);
+    const notification = key ? this.notifications.get(key) : undefined;
+    if (!notification || key !== idempotencyKey)
+      return { kind: "pending" as const };
+    return {
+      kind: "delivered" as const,
+      messageIds: [notification.id],
+      occurredAt: notification.occurredAt,
+    };
   }
 
   schedule(idempotencyKey: string, payload: NotificationPayload) {
     const work = Promise.resolve()
-      .then(() => this.trigger(idempotencyKey, payload))
+      .then(() => {
+        this.trigger(idempotencyKey, payload);
+      })
       .catch(() => undefined);
     this.pending.push(work);
   }
@@ -228,6 +364,7 @@ export class FakeKnockAdapter implements NotificationProvider {
 
   reset() {
     this.notifications.clear();
+    this.workflowRuns.clear();
     this.pending = [];
     this.rejectNextRead = false;
     this.rejectNextMarkAll = false;

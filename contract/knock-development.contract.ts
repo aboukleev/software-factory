@@ -116,6 +116,19 @@ async function waitForFeedCount(count: number) {
   throw new Error(`Timed out waiting for ${count} Knock Feed items`);
 }
 
+async function waitForDeliveredOutcome(
+  provider: KnockNotificationProvider,
+  workflowRunId: string,
+  idempotencyKey: string
+) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const outcome = await provider.lookupOutcome(workflowRunId, idempotencyKey);
+    if (outcome.kind === "delivered") return outcome;
+    await wait(500);
+  }
+  throw new Error("Timed out waiting for Knock to confirm in-app Delivery");
+}
+
 function payload(
   eventKind: NotificationPayload["eventKind"],
   sourceCommentId: number
@@ -276,6 +289,16 @@ describe("Knock Development security contract", () => {
     expect(firstResult.requestId).toEqual(expect.any(String));
 
     await waitForFeedCount(1);
+    const firstOutcome = await waitForDeliveredOutcome(
+      provider,
+      firstResult.workflowRunId,
+      firstKey
+    );
+    expect(firstOutcome).toMatchObject({
+      kind: "delivered",
+      messageIds: [expect.any(String)],
+      occurredAt: expect.any(String),
+    });
 
     const realtimeHint = await Promise.race([
       hint,

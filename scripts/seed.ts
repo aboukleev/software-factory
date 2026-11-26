@@ -64,6 +64,8 @@ async function seed() {
 
   // Drop and recreate tables for a clean seed
   sqlite.exec(`
+    DROP TABLE IF EXISTS notification_delivery_incidents;
+    DROP TABLE IF EXISTS notification_outcome_events;
     DROP TABLE IF EXISTS notification_deliveries;
     DROP TABLE IF EXISTS notification_events;
     DROP TABLE IF EXISTS comments;
@@ -2058,8 +2060,80 @@ This course is still in draft while the cluster examples are rewritten against t
       nextAttemptAt: c1q1.createdAt,
     })
     .run();
+
+  // Seed one content-free historical incident so the outcome and incident
+  // tables are exercised by the disposable development database as well as by
+  // tests. The logical Notification identity and immutable payload are reused;
+  // only opaque provider references are retained as evidence.
+  const incidentIdentity = `question.created:${c2q2.id}`;
+  const incidentEvent = db
+    .insert(schema.notificationEvents)
+    .values({
+      identity: incidentIdentity,
+      kind: "question.created",
+      occurredAt: c2q2.createdAt,
+      sourceCommentId: c2q2.id,
+      rootQuestionId: c2q2.id,
+      actorId: c2q2.userId,
+      actorCapacity: "student",
+      recipientId: instructor2.id,
+      courseId: course2.id,
+      lessonId: c2q2.lessonId,
+    })
+    .returning()
+    .get();
+  const incidentDelivery = db
+    .insert(schema.notificationDeliveries)
+    .values({
+      notificationEventId: incidentEvent.id,
+      recipientId: instructor2.id,
+      channel: "in_app",
+      workflowKey: "student-question-created",
+      idempotencyKey: `${incidentIdentity}:${instructor2.id}:in_app`,
+      providerPayload: JSON.stringify({
+        eventIdentity: incidentIdentity,
+        eventKind: "question.created",
+        occurredAt: c2q2.createdAt,
+        sourceCommentId: c2q2.id,
+        rootQuestionId: c2q2.id,
+        recipientId: instructor2.id,
+        courseId: course2.id,
+        lessonId: c2q2.lessonId,
+      }),
+      status: "outcome_unknown",
+      nextAttemptAt: c2q2.createdAt,
+      acceptedAt: c2q2.createdAt,
+      errorCategory: "provider_physical_duplicate",
+      providerRequestId: "seed-request-duplicate",
+      providerWorkflowRunId: "seed-run-duplicate",
+      outcomeCheckedAt: c2q2.createdAt,
+    })
+    .returning()
+    .get();
+  db.insert(schema.notificationOutcomeEvents)
+    .values({
+      deliveryId: incidentDelivery.id,
+      providerEventId: "seed-outcome-duplicate",
+      kind: "delivered",
+      providerMessageIds: JSON.stringify([
+        "seed-message-one",
+        "seed-message-two",
+      ]),
+      occurredAt: c2q2.createdAt,
+    })
+    .run();
+  db.insert(schema.notificationDeliveryIncidents)
+    .values({
+      deliveryId: incidentDelivery.id,
+      providerEventId: "seed-outcome-duplicate",
+      kind: "physical_duplicate",
+      evidence: JSON.stringify({
+        messageIds: ["seed-message-one", "seed-message-two"],
+      }),
+    })
+    .run();
   console.log(
-    `Created ${countRows(schema.notificationEvents)} notification event and ${countRows(schema.notificationDeliveries)} delivery.`
+    `Created ${countRows(schema.notificationEvents)} notification events, ${countRows(schema.notificationDeliveries)} deliveries, ${countRows(schema.notificationOutcomeEvents)} outcome event, and ${countRows(schema.notificationDeliveryIncidents)} delivery incident.`
   );
 
   // ─── Lesson Progress ───
