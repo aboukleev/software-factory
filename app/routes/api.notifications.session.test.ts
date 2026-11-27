@@ -2,8 +2,14 @@ import { describe, expect, test, vi } from "vitest";
 import { loader } from "./api.notifications.session";
 
 const session = vi.hoisted(() => ({ getCurrentUserId: vi.fn() }));
+const controls = vi.hoisted(() => ({ feedEnabled: true }));
 vi.mock("~/lib/session", () => ({
   getCurrentUserId: session.getCurrentUserId,
+}));
+vi.mock("~/services/notificationOperations.server", () => ({
+  notificationOperations: {
+    getControls: () => ({ ...controls }),
+  },
 }));
 
 describe("GET /api/notifications/session", () => {

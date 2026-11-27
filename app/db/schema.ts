@@ -512,13 +512,13 @@ export const notificationOperationControls = sqliteTable(
     id: integer("id").primaryKey(),
     creationEnabled: integer("creation_enabled", { mode: "boolean" })
       .notNull()
-      .default(true),
+      .default(false),
     dispatchEnabled: integer("dispatch_enabled", { mode: "boolean" })
       .notNull()
       .default(true),
     feedEnabled: integer("feed_enabled", { mode: "boolean" })
       .notNull()
-      .default(true),
+      .default(false),
     updatedAt: text("updated_at").notNull(),
   }
 );
