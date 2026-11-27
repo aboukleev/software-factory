@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, useLocation } from "react-router";
 import { toast } from "sonner";
 import { MessageSquare, Pencil, Reply, Trash2 } from "lucide-react";
 import { Button } from "~/components/ui/button";
@@ -100,7 +100,11 @@ function CommentForm({
       />
 
       <div className="flex items-center gap-3">
-        <Button type="submit" size="sm" disabled={submitting || empty || tooLong}>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={submitting || empty || tooLong}
+        >
           {submitting ? "Posting..." : submitLabel}
         </Button>
 
@@ -206,7 +210,8 @@ function CommentItem({
   const [editing, setEditing] = useState(false);
   const [replying, setReplying] = useState(false);
 
-  const isAuthor = currentUserId !== null && comment.author.id === currentUserId;
+  const isAuthor =
+    currentUserId !== null && comment.author.id === currentUserId;
 
   if (comment.deleted) {
     return (
@@ -225,7 +230,14 @@ function CommentItem({
   }
 
   return (
-    <div className={cn("py-3", isReply && "border-l pl-4")}>
+    <div
+      id={`${isReply ? "reply" : "question"}-${comment.id}`}
+      tabIndex={-1}
+      className={cn(
+        "py-3 data-[notification-highlight=true]:rounded-md data-[notification-highlight=true]:bg-primary/10 data-[notification-highlight=true]:outline data-[notification-highlight=true]:outline-2 data-[notification-highlight=true]:outline-primary",
+        isReply && "border-l pl-4"
+      )}
+    >
       <div className="flex items-start gap-3">
         <UserAvatar
           name={comment.author.name}
@@ -352,6 +364,24 @@ export function CommentThread({
   canPost: boolean;
   instructorName: string;
 }) {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!location.hash) return;
+    const target = document.getElementById(
+      decodeURIComponent(location.hash.slice(1))
+    );
+    if (!target) return;
+
+    target.scrollIntoView({ block: "center" });
+    target.focus({ preventScroll: true });
+    target.dataset.notificationHighlight = "true";
+    const timeout = window.setTimeout(() => {
+      delete target.dataset.notificationHighlight;
+    }, 2000);
+    return () => window.clearTimeout(timeout);
+  }, [location.hash]);
+
   return (
     <Card className="mb-8">
       <CardContent className="p-6">

@@ -44,6 +44,10 @@ export default [
     route("admin/courses", "routes/admin.courses.tsx"),
     route("admin/categories", "routes/admin.categories.tsx"),
     route("settings", "routes/settings.tsx"),
+    route("notifications", "routes/notifications.tsx"),
+    route("notifications/feed", "routes/notifications.feed.ts"),
+    route("notifications/read", "routes/notifications.read.ts"),
+    route("notifications/unavailable", "routes/notifications.unavailable.tsx"),
     route("team", "routes/team.tsx"),
     route("redeem/:code", "routes/redeem.$code.tsx"),
   ]),
@@ -53,4 +57,10 @@ export default [
   route("api/logout", "routes/api.logout.ts"),
   route("api/video-tracking", "routes/api.video-tracking.ts"),
   route("api/set-dev-country", "routes/api.set-dev-country.ts"),
+  route(
+    "api/notifications/credentials",
+    "routes/api.notifications.credentials.ts"
+  ),
+  route("api/notifications/session", "routes/api.notifications.session.ts"),
+  route("api/notifications/outcomes", "routes/api.notifications.outcomes.ts"),
 ] satisfies RouteConfig;

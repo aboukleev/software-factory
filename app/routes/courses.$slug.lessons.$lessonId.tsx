@@ -55,6 +55,10 @@ import { data, isRouteErrorResponse } from "react-router";
 import { z } from "zod";
 import { COUNTRIES } from "~/lib/ppp";
 import { parseFormData, parseParams } from "~/lib/validation";
+import {
+  createDiscussionPost,
+  deleteDiscussionPost,
+} from "~/services/discussionService";
 
 const lessonParamsSchema = z.object({
   slug: z.string().min(1),
@@ -401,39 +405,6 @@ function getLessonThread(lessonId: number): ThreadComment[] {
   return topLevel.filter((c) => !c.deleted || c.replies.length > 0);
 }
 
-function createComment(
-  userId: number,
-  lessonId: number,
-  parentId: number | null,
-  body: string
-) {
-  const trimmed = assertValidBody(body);
-
-  const course = getCourseForLesson(lessonId);
-  if (!course) {
-    throw new Error("Lesson not found");
-  }
-
-  if (parentId !== null) {
-    const parent = getCommentById(parentId);
-    if (!parent) {
-      throw new Error("Parent comment not found");
-    }
-    if (parent.lessonId !== lessonId) {
-      throw new Error("Parent comment belongs to a different lesson");
-    }
-    if (parent.parentId !== null) {
-      throw new Error("Replies can only be one level deep");
-    }
-  }
-
-  return db
-    .insert(comments)
-    .values({ userId, lessonId, parentId, body: trimmed })
-    .returning()
-    .get();
-}
-
 function updateComment(commentId: number, userId: number, body: string) {
   const trimmed = assertValidBody(body);
 
@@ -451,26 +422,6 @@ function updateComment(commentId: number, userId: number, body: string) {
   return db
     .update(comments)
     .set({ body: trimmed, editedAt: new Date().toISOString() })
-    .where(eq(comments.id, commentId))
-    .returning()
-    .get();
-}
-
-function deleteComment(commentId: number, userId: number, isStaff: boolean) {
-  const existing = getCommentById(commentId);
-  if (!existing) {
-    throw new Error("Comment not found");
-  }
-  if (existing.userId !== userId && !isStaff) {
-    throw new Error("You can only delete your own comments");
-  }
-  if (existing.deletedAt !== null) {
-    return existing;
-  }
-
-  return db
-    .update(comments)
-    .set({ deletedAt: new Date().toISOString() })
     .where(eq(comments.id, commentId))
     .returning()
     .get();
@@ -900,12 +851,12 @@ export async function action({ params, request }: Route.ActionArgs) {
         if (!parsed.success) {
           return { ok: false, error: "Enter a comment before posting." };
         }
-        createComment(
-          currentUserId,
+        createDiscussionPost({
+          authorization: { userId: currentUserId, courseId: course.id },
           lessonId,
-          parsed.data.parentId ?? null,
-          parsed.data.body
-        );
+          parentId: parsed.data.parentId ?? null,
+          body: parsed.data.body,
+        });
         return { ok: true };
       }
 
@@ -932,7 +883,11 @@ export async function action({ params, request }: Route.ActionArgs) {
       if (!existing || existing.lessonId !== lessonId) {
         throw data("Comment not found", { status: 404 });
       }
-      deleteComment(parsed.data.commentId, currentUserId, access.isStaff);
+      deleteDiscussionPost({
+        commentId: parsed.data.commentId,
+        userId: currentUserId,
+        isStaff: access.isStaff,
+      });
       return { ok: true };
     } catch (error) {
       // Service validation failures are user-correctable; anything thrown as a

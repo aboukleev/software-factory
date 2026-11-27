@@ -354,6 +354,206 @@ export const comments = sqliteTable(
   ]
 );
 
+export const notificationEvents = sqliteTable(
+  "notification_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    identity: text("identity").notNull(),
+    kind: text("kind")
+      .notNull()
+      .$type<"question.created" | "staff-reply.created">(),
+    occurredAt: text("occurred_at").notNull(),
+    sourceCommentId: integer("source_comment_id")
+      .notNull()
+      .references(() => comments.id),
+    rootQuestionId: integer("root_question_id")
+      .notNull()
+      .references(() => comments.id),
+    // Account erasure can remove the identifying actor reference while the
+    // content-free Notification remains eligible for its normal expiry.
+    actorId: integer("actor_id").references(() => users.id),
+    actorCapacity: text("actor_capacity")
+      .notNull()
+      .$type<"student" | "instructor" | "platform_admin">(),
+    recipientId: integer("recipient_id")
+      .notNull()
+      .references(() => users.id),
+    courseId: integer("course_id")
+      .notNull()
+      .references(() => courses.id),
+    lessonId: integer("lesson_id")
+      .notNull()
+      .references(() => lessons.id),
+  },
+  (table) => [
+    uniqueIndex("notification_events_identity_unique").on(table.identity),
+  ]
+);
+
+export const notificationDeliveries = sqliteTable(
+  "notification_deliveries",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    notificationEventId: integer("notification_event_id")
+      .notNull()
+      .references(() => notificationEvents.id),
+    recipientId: integer("recipient_id")
+      .notNull()
+      .references(() => users.id),
+    channel: text("channel").notNull().$type<"in_app">(),
+    workflowKey: text("workflow_key").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    providerPayload: text("provider_payload").notNull(),
+    status: text("status")
+      .notNull()
+      .$type<
+        | "queued"
+        | "attempting"
+        | "retry_scheduled"
+        | "accepted"
+        | "delivered"
+        | "cancelled"
+        | "permanently_failed"
+        | "outcome_unknown"
+      >(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at").notNull(),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: text("lease_expires_at"),
+    firstAttemptAt: text("first_attempt_at"),
+    lastAttemptAt: text("last_attempt_at"),
+    acceptedAt: text("accepted_at"),
+    deliveredAt: text("delivered_at"),
+    terminalAt: text("terminal_at"),
+    errorCategory: text("error_category"),
+    providerRequestId: text("provider_request_id"),
+    providerWorkflowRunId: text("provider_workflow_run_id"),
+    providerMessageId: text("provider_message_id"),
+    outcomeEvidence: text("outcome_evidence"),
+    outcomeCheckedAt: text("outcome_checked_at"),
+    outcomeNextCheckAt: text("outcome_next_check_at"),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    uniqueIndex("notification_deliveries_event_recipient_channel_unique").on(
+      table.notificationEventId,
+      table.recipientId,
+      table.channel
+    ),
+    uniqueIndex("notification_deliveries_idempotency_unique").on(
+      table.idempotencyKey
+    ),
+    index("notification_deliveries_due_idx").on(
+      table.status,
+      table.nextAttemptAt
+    ),
+    index("notification_deliveries_lease_idx").on(
+      table.status,
+      table.leaseExpiresAt
+    ),
+    index("notification_deliveries_outcome_due_idx").on(
+      table.status,
+      table.outcomeNextCheckAt
+    ),
+  ]
+);
+
+export const notificationOutcomeEvents = sqliteTable(
+  "notification_outcome_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    deliveryId: integer("delivery_id")
+      .notNull()
+      .references(() => notificationDeliveries.id),
+    providerEventId: text("provider_event_id").notNull(),
+    kind: text("kind").notNull(),
+    providerMessageIds: text("provider_message_ids"),
+    occurredAt: text("occurred_at").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    uniqueIndex("notification_outcome_events_provider_event_unique").on(
+      table.providerEventId
+    ),
+    index("notification_outcome_events_delivery_idx").on(table.deliveryId),
+  ]
+);
+
+export const notificationDeliveryIncidents = sqliteTable(
+  "notification_delivery_incidents",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    deliveryId: integer("delivery_id")
+      .notNull()
+      .references(() => notificationDeliveries.id),
+    providerEventId: text("provider_event_id").notNull(),
+    kind: text("kind")
+      .notNull()
+      .$type<"physical_duplicate" | "privacy" | "reliability">(),
+    evidence: text("evidence").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    uniqueIndex("notification_delivery_incidents_provider_event_unique").on(
+      table.providerEventId
+    ),
+  ]
+);
+
+export const notificationOperationControls = sqliteTable(
+  "notification_operation_controls",
+  {
+    id: integer("id").primaryKey(),
+    creationEnabled: integer("creation_enabled", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    dispatchEnabled: integer("dispatch_enabled", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    feedEnabled: integer("feed_enabled", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    updatedAt: text("updated_at").notNull(),
+  }
+);
+
+export const notificationDispatcherHeartbeats = sqliteTable(
+  "notification_dispatcher_heartbeats",
+  {
+    id: integer("id").primaryKey(),
+    observedAt: text("observed_at").notNull(),
+  }
+);
+
+export const notificationDeliveryTransitions = sqliteTable(
+  "notification_delivery_transitions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    deliveryId: integer("delivery_id")
+      .notNull()
+      .references(() => notificationDeliveries.id),
+    notificationEventId: integer("notification_event_id")
+      .notNull()
+      .references(() => notificationEvents.id),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status").notNull(),
+    outcomeCode: text("outcome_code").notNull(),
+    occurredAt: text("occurred_at").notNull(),
+  },
+  (table) => [
+    index("notification_delivery_transitions_delivery_idx").on(
+      table.deliveryId,
+      table.occurredAt
+    ),
+  ]
+);
+
 export const videoWatchEvents = sqliteTable("video_watch_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id")

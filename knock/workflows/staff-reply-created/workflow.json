@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schemas.knock.app/cli/workflow.json",
+  "name": "Staff Reply created",
+  "description": "Notify the captured Student about a committed qualifying Reply.",
+  "trigger_frequency": "every_trigger",
+  "trigger_data_json_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "eventIdentity",
+      "eventKind",
+      "occurredAt",
+      "sourceCommentId",
+      "rootQuestionId",
+      "recipientId",
+      "courseId",
+      "lessonId"
+    ],
+    "properties": {
+      "eventIdentity": { "type": "string", "maxLength": 255 },
+      "eventKind": { "const": "staff-reply.created" },
+      "occurredAt": { "type": "string", "format": "date-time" },
+      "sourceCommentId": { "type": "integer", "minimum": 1 },
+      "rootQuestionId": { "type": "integer", "minimum": 1 },
+      "recipientId": { "type": "integer", "minimum": 1 },
+      "courseId": { "type": "integer", "minimum": 1 },
+      "lessonId": { "type": "integer", "minimum": 1 }
+    }
+  },
+  "steps": [
+    {
+      "channel_key": "in-app",
+      "channel_type": "in_app_feed",
+      "description": "Create one privacy-safe Notification Feed item.",
+      "name": "In-app feed",
+      "ref": "in_app_feed_1",
+      "template": {
+        "action_url": "https://cadence.example/notifications",
+        "markdown_body@": "in_app_feed_1/markdown_body.md"
+      },
+      "type": "channel"
+    }
+  ]
+}

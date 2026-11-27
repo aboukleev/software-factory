@@ -71,6 +71,48 @@
       "when": 1790083397130,
       "tag": "0009_clear_professor_monster",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795381544297,
+      "tag": "0010_fast_leopardon",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1795634622309,
+      "tag": "0011_legal_moira_mactaggert",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795636033250,
+      "tag": "0012_smart_slayback",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1795690279932,
+      "tag": "0013_awesome_nomad",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1795708372155,
+      "tag": "0014_swift_stephen_strange",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1795716276548,
+      "tag": "0015_watery_ultimo",
+      "breakpoints": true
     }
   ]
 }
