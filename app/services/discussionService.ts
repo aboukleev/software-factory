@@ -18,6 +18,9 @@ import { wakeNotificationDispatcher } from "~/services/notificationDispatcherIns
 import { createNotificationOperations } from "~/services/notificationOperations.server";
 
 type DiscussionDatabase = typeof db;
+type DiscussionTransaction = Parameters<
+  Parameters<DiscussionDatabase["transaction"]>[0]
+>[0];
 
 type DiscussionAuthorization = {
   userId: number;
@@ -36,6 +39,71 @@ type DeleteDiscussionPostInput = {
   userId: number;
   isStaff: boolean;
 };
+
+type NotificationCreation = {
+  eventKind: NotificationPayload["eventKind"];
+  sourceCommentId: number;
+  rootQuestionId: number;
+  occurredAt: string;
+  actorId: number;
+  actorCapacity: "student" | "instructor" | "platform_admin";
+  recipientId: number;
+  courseId: number;
+  lessonId: number;
+  workflowKey: "student-question-created" | "staff-reply-created";
+};
+
+function recordNotificationCreation(
+  tx: DiscussionTransaction,
+  input: NotificationCreation
+) {
+  const identity = `${input.eventKind}:${input.sourceCommentId}`;
+  const event = tx
+    .insert(notificationEvents)
+    .values({
+      identity,
+      kind: input.eventKind,
+      occurredAt: input.occurredAt,
+      sourceCommentId: input.sourceCommentId,
+      rootQuestionId: input.rootQuestionId,
+      actorId: input.actorId,
+      actorCapacity: input.actorCapacity,
+      recipientId: input.recipientId,
+      courseId: input.courseId,
+      lessonId: input.lessonId,
+    })
+    .returning()
+    .get();
+
+  // Self-notification retains the immutable Event but has no Delivery.
+  if (input.actorId === input.recipientId) return null;
+
+  const idempotencyKey = `${identity}:${input.recipientId}:in_app`;
+  const payload: NotificationPayload = {
+    eventIdentity: identity,
+    eventKind: input.eventKind,
+    occurredAt: input.occurredAt,
+    sourceCommentId: input.sourceCommentId,
+    rootQuestionId: input.rootQuestionId,
+    recipientId: input.recipientId,
+    courseId: input.courseId,
+    lessonId: input.lessonId,
+  };
+  return tx
+    .insert(notificationDeliveries)
+    .values({
+      notificationEventId: event.id,
+      recipientId: input.recipientId,
+      channel: "in_app",
+      workflowKey: input.workflowKey,
+      idempotencyKey,
+      providerPayload: JSON.stringify(payload),
+      status: "queued",
+      nextAttemptAt: input.occurredAt,
+    })
+    .returning({ id: notificationDeliveries.id })
+    .get();
+}
 
 export function deleteDiscussionPost(
   input: DeleteDiscussionPostInput,
@@ -182,55 +250,23 @@ export function createDiscussionPost(
         )
         .get();
 
-      if (
-        actor?.role === UserRole.Student &&
-        enrollment &&
-        input.authorization.userId !== course.instructorId
-      ) {
-        const identity = `question.created:${source.id}`;
-        const event = tx
-          .insert(notificationEvents)
-          .values({
-            identity,
-            kind: "question.created",
-            occurredAt: source.createdAt,
-            sourceCommentId: source.id,
-            rootQuestionId: source.id,
-            actorId: input.authorization.userId,
-            actorCapacity: "student",
-            recipientId: course.instructorId,
-            courseId: course.id,
-            lessonId: input.lessonId,
-          })
-          .returning()
-          .get();
-        const idempotencyKey = `${identity}:${course.instructorId}:in_app`;
-        const payload: NotificationPayload = {
-          eventIdentity: identity,
+      if (actor?.role === UserRole.Student && enrollment) {
+        const delivery = recordNotificationCreation(tx, {
           eventKind: "question.created",
           occurredAt: source.createdAt,
           sourceCommentId: source.id,
           rootQuestionId: source.id,
+          actorId: input.authorization.userId,
+          actorCapacity: "student",
           recipientId: course.instructorId,
           courseId: course.id,
           lessonId: input.lessonId,
-        };
-        const delivery = tx
-          .insert(notificationDeliveries)
-          .values({
-            notificationEventId: event.id,
-            recipientId: course.instructorId,
-            channel: "in_app",
-            workflowKey: "student-question-created",
-            idempotencyKey,
-            providerPayload: JSON.stringify(payload),
-            status: "queued",
-            nextAttemptAt: source.createdAt,
-          })
-          .returning({ id: notificationDeliveries.id })
-          .get();
-        createdDeliveryIds.push(delivery.id);
-        shouldWakeDispatcher = true;
+          workflowKey: "student-question-created",
+        });
+        if (delivery) {
+          createdDeliveryIds.push(delivery.id);
+          shouldWakeDispatcher = true;
+        }
       }
     } else if (creationEnabled && parent) {
       const qualifyingQuestion = tx
@@ -260,51 +296,20 @@ export function createDiscussionPost(
         qualifyingQuestion.actorId !== null &&
         actorCapacity
       ) {
-        const identity = `staff-reply.created:${source.id}`;
         const recipientId = qualifyingQuestion.actorId;
-        const event = tx
-          .insert(notificationEvents)
-          .values({
-            identity,
-            kind: "staff-reply.created",
-            occurredAt: source.createdAt,
-            sourceCommentId: source.id,
-            rootQuestionId: parent.id,
-            actorId: input.authorization.userId,
-            actorCapacity,
-            recipientId,
-            courseId: course.id,
-            lessonId: input.lessonId,
-          })
-          .returning()
-          .get();
-
-        if (input.authorization.userId !== recipientId) {
-          const idempotencyKey = `${identity}:${recipientId}:in_app`;
-          const payload: NotificationPayload = {
-            eventIdentity: identity,
-            eventKind: "staff-reply.created",
-            occurredAt: source.createdAt,
-            sourceCommentId: source.id,
-            rootQuestionId: parent.id,
-            recipientId,
-            courseId: course.id,
-            lessonId: input.lessonId,
-          };
-          const delivery = tx
-            .insert(notificationDeliveries)
-            .values({
-              notificationEventId: event.id,
-              recipientId,
-              channel: "in_app",
-              workflowKey: "staff-reply-created",
-              idempotencyKey,
-              providerPayload: JSON.stringify(payload),
-              status: "queued",
-              nextAttemptAt: source.createdAt,
-            })
-            .returning({ id: notificationDeliveries.id })
-            .get();
+        const delivery = recordNotificationCreation(tx, {
+          eventKind: "staff-reply.created",
+          occurredAt: source.createdAt,
+          sourceCommentId: source.id,
+          rootQuestionId: parent.id,
+          actorId: input.authorization.userId,
+          actorCapacity,
+          recipientId,
+          courseId: course.id,
+          lessonId: input.lessonId,
+          workflowKey: "staff-reply-created",
+        });
+        if (delivery) {
           createdDeliveryIds.push(delivery.id);
           shouldWakeDispatcher = true;
         }

@@ -20,6 +20,12 @@ import {
 import { FakeKnockAdapter } from "~/services/notificationProvider";
 import { createNotificationDispatcher } from "~/services/notificationDispatcher.server";
 
+function required<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined)
+    throw new Error("Expected test fixture value");
+  return value;
+}
+
 async function dispatchQueued(
   database: ReturnType<typeof createTestDb>,
   provider: FakeKnockAdapter
@@ -212,7 +218,7 @@ describe("createDiscussionPost", () => {
     });
     expect(database.select().from(notificationDeliveries).all()).toContainEqual(
       expect.objectContaining({
-        notificationEventId: event!.id,
+        notificationEventId: required(event).id,
         recipientId: user.id,
         workflowKey: "staff-reply-created",
         idempotencyKey: `staff-reply.created:${reply.id}:${user.id}:in_app`,
@@ -459,6 +465,49 @@ describe("createDiscussionPost", () => {
     );
   });
 
+  test("retains a self-recipient Student Question Event while suppressing Delivery", () => {
+    const database = createTestDb();
+    const { user, course } = seedBaseData(database);
+    database
+      .update(courses)
+      .set({ instructorId: user.id })
+      .where(eq(courses.id, course.id))
+      .run();
+    database
+      .insert(enrollments)
+      .values({ userId: user.id, courseId: course.id })
+      .run();
+    const module = database
+      .insert(modules)
+      .values({ courseId: course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = database
+      .insert(lessons)
+      .values({ moduleId: module.id, title: "L", position: 1 })
+      .returning()
+      .get();
+
+    const question = createDiscussionPost(
+      {
+        authorization: { userId: user.id, courseId: course.id },
+        lessonId: lesson.id,
+        parentId: null,
+        body: "Question to myself",
+      },
+      database
+    ).source;
+
+    expect(database.select().from(notificationEvents).all()).toEqual([
+      expect.objectContaining({
+        identity: `question.created:${question.id}`,
+        actorId: user.id,
+        recipientId: user.id,
+      }),
+    ]);
+    expect(database.select().from(notificationDeliveries).all()).toEqual([]);
+  });
+
   test("keeps separately committed identical Replies as separate Events", () => {
     const database = createTestDb();
     const { user, instructor, course } = seedBaseData(database);
@@ -561,7 +610,8 @@ describe("createDiscussionPost", () => {
       .select()
       .from(notificationEvents)
       .all()
-      .find((event) => event.sourceCommentId === reply.id)!;
+      .find((event) => event.sourceCommentId === reply.id);
+    const capturedEvent = required(captured);
 
     database.delete(enrollments).where(eq(enrollments.userId, user.id)).run();
     database
@@ -580,9 +630,9 @@ describe("createDiscussionPost", () => {
         .select()
         .from(notificationEvents)
         .all()
-        .find((event) => event.id === captured.id)
-    ).toEqual(captured);
-    expect(captured).toEqual(
+        .find((event) => event.id === capturedEvent.id)
+    ).toEqual(capturedEvent);
+    expect(capturedEvent).toEqual(
       expect.objectContaining({
         actorId: instructor.id,
         actorCapacity: "instructor",
@@ -720,8 +770,9 @@ describe("createDiscussionPost", () => {
       (delivery) =>
         delivery.workflowKey === "staff-reply-created" &&
         delivery.recipientId === user.id
-    )!;
-    const payload = JSON.parse(replyDelivery.providerPayload);
+    );
+    const requiredReplyDelivery = required(replyDelivery);
+    const payload = JSON.parse(requiredReplyDelivery.providerPayload);
 
     database
       .update(comments)
@@ -733,8 +784,8 @@ describe("createDiscussionPost", () => {
       .set({ deletedAt: "2026-11-23T12:01:00.000Z" })
       .where(eq(comments.id, reply.id))
       .run();
-    provider.trigger(replyDelivery.idempotencyKey, payload);
-    provider.trigger(replyDelivery.idempotencyKey, payload);
+    provider.trigger(requiredReplyDelivery.idempotencyKey, payload);
+    provider.trigger(requiredReplyDelivery.idempotencyKey, payload);
 
     expect(database.select().from(notificationEvents).all()).toEqual(
       before.events
@@ -853,7 +904,9 @@ describe("createDiscussionPost", () => {
       },
       database
     );
-    const delivery = database.select().from(notificationDeliveries).get()!;
+    const delivery = required(
+      database.select().from(notificationDeliveries).get()
+    );
 
     expect(() =>
       database

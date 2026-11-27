@@ -20,6 +20,12 @@ import {
 import { FakeKnockAdapter } from "~/services/notificationProvider";
 import { createTestDb, seedBaseData } from "~/test/setup";
 
+function required<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined)
+    throw new Error("Expected test fixture value");
+  return value;
+}
+
 function fixture(occurredAt = "2026-01-01T00:00:00.000Z") {
   const database = createTestDb();
   const { user, instructor, course } = seedBaseData(database);
@@ -47,8 +53,10 @@ function fixture(occurredAt = "2026-01-01T00:00:00.000Z") {
     database,
     () => undefined
   );
-  const event = database.select().from(notificationEvents).get()!;
-  const delivery = database.select().from(notificationDeliveries).get()!;
+  const event = required(database.select().from(notificationEvents).get());
+  const delivery = required(
+    database.select().from(notificationDeliveries).get()
+  );
   database
     .update(comments)
     .set({ createdAt: occurredAt })
@@ -88,7 +96,7 @@ describe("Notification lifecycle", () => {
       provider: f.provider,
       now: () => new Date("2026-01-01T00:00:01.000Z"),
     }).runOnce();
-    const messageId = f.provider.list(f.recipientId)[0]!.id;
+    const messageId = required(f.provider.list(f.recipientId)[0]).id;
     f.database
       .update(notificationDeliveries)
       .set({ status: "delivered", providerMessageId: messageId })
@@ -143,7 +151,10 @@ describe("Notification lifecycle", () => {
       provider: f.provider,
       now: () => new Date("2026-01-01T00:00:01.000Z"),
     }).runOnce();
-    f.provider.markRead(f.recipientId, f.provider.list(f.recipientId)[0]!.id);
+    f.provider.markRead(
+      f.recipientId,
+      required(f.provider.list(f.recipientId)[0]).id
+    );
     f.database
       .delete(enrollments)
       .where(eq(enrollments.userId, f.actorId))
@@ -278,7 +289,7 @@ describe("Notification lifecycle", () => {
       provider: f.provider,
       now: () => new Date("2026-01-01T00:00:01.000Z"),
     }).runOnce();
-    const messageId = f.provider.list(f.recipientId)[0]!.id;
+    const messageId = required(f.provider.list(f.recipientId)[0]).id;
 
     await createNotificationLifecycleService({
       database: f.database,
@@ -318,7 +329,7 @@ describe("Notification lifecycle", () => {
       provider: f.provider,
       now: () => new Date("2026-01-01T00:00:01.000Z"),
     }).runOnce();
-    const messageId = f.provider.list(f.recipientId)[0]!.id;
+    const messageId = required(f.provider.list(f.recipientId)[0]).id;
     f.provider.archiveNotification = () => {
       throw new Error("provider unavailable");
     };
@@ -355,7 +366,7 @@ describe("Notification lifecycle", () => {
       provider: f.provider,
       now: () => new Date("2026-01-01T00:00:01.000Z"),
     }).runOnce();
-    const messageId = f.provider.list(f.recipientId)[0]!.id;
+    const messageId = required(f.provider.list(f.recipientId)[0]).id;
     f.database
       .update(notificationDeliveries)
       .set({ status: "delivered", providerMessageId: messageId })

@@ -8,6 +8,8 @@ import {
   notificationOutcomeEvents,
 } from "~/db/schema";
 import { createNotificationOperations } from "~/services/notificationOperations.server";
+import type { NotificationOutcomeCode } from "~/services/notificationOperations.server";
+import type { ProviderDeliveryOutcome } from "~/services/notificationProvider.contract";
 
 export type DeliveryStatus = typeof notificationDeliveries.$inferSelect.status;
 
@@ -28,19 +30,6 @@ export const deliveryTransitions = {
   outcome_unknown: ["delivered", "permanently_failed", "queued"],
 } as const satisfies Record<DeliveryStatus, readonly DeliveryStatus[]>;
 
-export type ProviderDeliveryOutcome = {
-  kind:
-    | "pending"
-    | "delivered"
-    | "skipped"
-    | "permanently_failed"
-    | "unknown"
-    | "no_notification";
-  messageIds?: string[];
-  occurredAt?: string;
-  evidence?: string;
-};
-
 type OutcomeProvider = {
   lookupOutcome?: (
     workflowRunId: string,
@@ -60,6 +49,21 @@ type OutcomeEvent = {
 
 const RECOVERY_WINDOW_MS = 24 * 60 * 60 * 1_000;
 const RECONCILIATION_INTERVAL_MS = 60_000;
+
+function transitionOutcomeCode(
+  errorCategory: string | null | undefined,
+  nextStatus: DeliveryStatus
+): NotificationOutcomeCode {
+  switch (errorCategory) {
+    case "provider_physical_duplicate":
+    case "provider_workflow_skipped":
+    case "provider_outcome_permanent":
+    case "provider_outcome_ambiguous":
+      return errorCategory;
+    default:
+      return nextStatus;
+  }
+}
 
 export function createNotificationOutcomeService({
   database = db,
@@ -111,9 +115,7 @@ export function createNotificationOutcomeService({
         deliveryId,
         current.status,
         nextStatus,
-        typeof values.errorCategory === "string"
-          ? values.errorCategory
-          : nextStatus
+        transitionOutcomeCode(values.errorCategory, nextStatus)
       );
     }
     return getDelivery(deliveryId);

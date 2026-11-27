@@ -289,7 +289,7 @@ describe("Notification dispatcher", () => {
     await Promise.all([first, second]);
   });
 
-  test("times out a provider call after 15 seconds and applies deterministic jitter", async () => {
+  test("records an ambiguous timeout as outcome unknown without blind retry", async () => {
     vi.useFakeTimers();
     const database = createTestDb();
     const queued = queuedDelivery(database);
@@ -305,9 +305,9 @@ describe("Notification dispatcher", () => {
     await run;
 
     expect(deliveryRow(database, queued.delivery.id)).toMatchObject({
-      status: "retry_scheduled",
-      errorCategory: "timeout",
-      nextAttemptAt: "2026-01-01T00:00:49.000Z",
+      status: "outcome_unknown",
+      errorCategory: "timeout_ambiguous",
+      outcomeNextCheckAt: null,
     });
   });
 
@@ -351,7 +351,9 @@ describe("Notification dispatcher", () => {
       provider: {
         trigger(key, payload) {
           attempts.push({ key, payload });
-          if (attempts.length === 1) throw new TypeError("offline");
+          if (attempts.length === 1) {
+            throw new NotificationProviderError("unavailable", 503);
+          }
         },
       },
       now: () => new Date(currentMs),
@@ -401,7 +403,8 @@ describe("Notification dispatcher", () => {
     const queued = queuedDelivery(database);
     let currentMs = Date.parse("2026-01-01T00:00:01.000Z");
     const provider = {
-      trigger: () => Promise.reject(new TypeError("offline")),
+      trigger: () =>
+        Promise.reject(new NotificationProviderError("unavailable", 503)),
     };
     const dispatcher = createNotificationDispatcher({
       database,
@@ -423,6 +426,22 @@ describe("Notification dispatcher", () => {
       status: "permanently_failed",
       attemptCount: 7,
       errorCategory: "retry_exhausted",
+    });
+  });
+
+  test("records a generic network failure as outcome unknown without retry", async () => {
+    const database = createTestDb();
+    const queued = queuedDelivery(database);
+    await createNotificationDispatcher({
+      database,
+      provider: { trigger: () => Promise.reject(new TypeError("offline")) },
+      now: () => new Date("2026-01-01T00:00:01.000Z"),
+    }).runOnce();
+
+    expect(deliveryRow(database, queued.delivery.id)).toMatchObject({
+      status: "outcome_unknown",
+      errorCategory: "network_ambiguous",
+      attemptCount: 1,
     });
   });
 
@@ -586,7 +605,7 @@ describe("Notification dispatcher", () => {
       second.idempotencyKey,
     ]);
     expect(deliveryRow(database, first.delivery.id)?.status).toBe(
-      "retry_scheduled"
+      "outcome_unknown"
     );
     expect(deliveryRow(database, second.id)?.status).toBe("accepted");
   });

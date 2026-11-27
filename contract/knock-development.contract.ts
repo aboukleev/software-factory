@@ -134,11 +134,13 @@ async function waitForFeedMessage(messageId: string, present: boolean) {
 }
 
 async function waitForRecipientMessagesToBeDeleted() {
+  if (!stableRecipientId)
+    throw new Error("Disposable recipient was not created");
   // Knock processes hard deletion asynchronously and documents that it can
   // take up to ten minutes before all associated data disappears.
   for (let attempt = 0; attempt < 600; attempt += 1) {
     const query = new URLSearchParams({
-      recipient: stableRecipientId!,
+      recipient: stableRecipientId,
       page_size: "50",
     });
     const response = await fetch(`${apiBaseUrl}/messages?${query}`, {
@@ -313,6 +315,7 @@ describe("Knock Development security contract", () => {
 
     const provider = new KnockNotificationProvider({
       secretApiKey: config.secretApiKey,
+      feedChannelId: config.feedChannelId,
     });
     const firstIdentity = `question.created:${Date.now()}`;
     const firstPayload = payload(
@@ -361,6 +364,28 @@ describe("Knock Development security contract", () => {
     const secondPage = await getFeed(cursor);
     expect(secondPage.entries).toHaveLength(1);
 
+    const providerFirstPage = await provider.listPage(
+      Number(stableRecipientId),
+      { pageSize: 1 }
+    );
+    expect(providerFirstPage).toMatchObject({
+      unreadCount: 2,
+      nextCursor: expect.any(String),
+      items: [{ id: firstPage.entries[0]?.id, readAt: null }],
+    });
+    if (!providerFirstPage.nextCursor) {
+      throw new Error("Expected a provider cursor for the second Feed page");
+    }
+    const providerSecondPage = await provider.listPage(
+      Number(stableRecipientId),
+      { cursor: providerFirstPage.nextCursor, pageSize: 1 }
+    );
+    expect(providerSecondPage).toMatchObject({
+      unreadCount: 2,
+      nextCursor: null,
+      items: [{ id: secondPage.entries[0]?.id, readAt: null }],
+    });
+
     const items = [...firstPage.entries, ...secondPage.entries];
     const approvedData = [
       "courseId",
@@ -383,16 +408,20 @@ describe("Knock Development security contract", () => {
 
     const message = firstPage.entries[0];
     if (!message) throw new Error("Expected a Feed message");
-    await readJson(
-      await fetch(`${apiBaseUrl}/messages/${message.id}/read`, {
-        method: "PUT",
-        headers: publicHeaders,
-      })
-    );
+    await expect(
+      provider.markRead(Number(stableRecipientId), message.id)
+    ).resolves.toBe(true);
     const readFeed = await getFeed();
     expect(
       readFeed.entries.find((entry) => entry.id === message.id)?.read_at
     ).toEqual(expect.any(String));
+
+    await expect(provider.markAllRead(Number(stableRecipientId))).resolves.toBe(
+      true
+    );
+    await expect(
+      provider.listPage(Number(stableRecipientId))
+    ).resolves.toMatchObject({ unreadCount: 0 });
 
     await provider.archiveNotification(message.id);
     await waitForFeedMessage(message.id, false);

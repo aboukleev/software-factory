@@ -20,41 +20,43 @@ function addNotification(
 }
 
 describe("Notification read service", () => {
-  test("acknowledges one Notification without changing another recipient", () => {
+  test("acknowledges one Notification without changing another recipient", async () => {
     const provider = new FakeKnockAdapter();
     const service = createNotificationReadService(provider);
     addNotification(provider, "for-seven", 7);
     addNotification(provider, "for-eight", 8);
 
-    expect(service.markRead(7, "for-seven")).toEqual({ ok: true });
+    await expect(service.markRead(7, "for-seven")).resolves.toEqual({
+      ok: true,
+    });
     expect(provider.list(7)[0]?.readAt).not.toBeNull();
     expect(provider.list(8)[0]?.readAt).toBeNull();
-    expect(service.markRead(8, "for-seven")).toEqual({
+    await expect(service.markRead(8, "for-seven")).resolves.toEqual({
       ok: false,
       reason: "provider-rejected",
     });
   });
 
-  test("reports mutation failure so callers can reconcile without throwing", () => {
+  test("reports mutation failure so callers can reconcile without throwing", async () => {
     const provider = new FakeKnockAdapter();
     const service = createNotificationReadService(provider);
     addNotification(provider, "one", 7);
     provider.failNextRead();
 
-    expect(service.markRead(7, "one")).toEqual({
+    await expect(service.markRead(7, "one")).resolves.toEqual({
       ok: false,
       reason: "provider-rejected",
     });
     expect(provider.list(7)[0]?.readAt).toBeNull();
   });
 
-  test("Mark all read delegates to provider authority rather than loaded items", () => {
+  test("Mark all read delegates to provider authority rather than loaded items", async () => {
     const provider = new FakeKnockAdapter();
     const service = createNotificationReadService(provider);
     addNotification(provider, "visible", 7);
     addNotification(provider, "unloaded", 7);
 
-    expect(service.markAllRead(7)).toEqual({ ok: true });
+    await expect(service.markAllRead(7)).resolves.toEqual({ ok: true });
     expect(provider.list(7).every((item) => item.readAt !== null)).toBe(true);
 
     addNotification(provider, "later", 7);

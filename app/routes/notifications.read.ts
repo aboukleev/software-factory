@@ -1,24 +1,30 @@
-import { data } from "react-router";
-import { getCurrentUserId } from "~/lib/session";
-import { fakeKnockAdapter } from "~/services/notificationProvider";
+import { z } from "zod";
+import { requireNotificationFeedAccess } from "~/services/notificationAccess.server";
+import { notificationProvider } from "~/services/notificationProvider.server";
 import { createNotificationReadService } from "~/services/notificationReadService";
 import type { Route } from "./+types/notifications.read";
 
-const notificationReads = createNotificationReadService(fakeKnockAdapter);
+const notificationReads = createNotificationReadService(notificationProvider);
+const readInputSchema = z.discriminatedUnion("intent", [
+  z.object({ intent: z.literal("mark-all") }).strict(),
+  z
+    .object({
+      intent: z.literal("mark-read"),
+      notificationId: z.string().min(1).max(255),
+    })
+    .strict(),
+]);
 
 export async function action({ request }: Route.ActionArgs) {
-  const userId = await getCurrentUserId(request);
-  if (!userId) throw data("You must be logged in", { status: 401 });
-
+  const { userId } = await requireNotificationFeedAccess(request);
   const formData = await request.formData();
-  const intent = formData.get("intent");
-  const notificationId = formData.get("notificationId");
+  const parsed = readInputSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success)
+    throw new Response("Invalid read mutation", { status: 400 });
   const result =
-    intent === "mark-all"
-      ? notificationReads.markAllRead(userId)
-      : intent === "mark-read" && typeof notificationId === "string"
-        ? notificationReads.markRead(userId, notificationId)
-        : { ok: false as const };
-
-  return Response.json({ ok: result.ok }, { status: result.ok ? 200 : 503 });
+    parsed.data.intent === "mark-all"
+      ? await notificationReads.markAllRead(userId)
+      : await notificationReads.markRead(userId, parsed.data.notificationId);
+  if (!result.ok) throw Response.json({ ok: false }, { status: 503 });
+  return Response.json({ ok: true });
 }

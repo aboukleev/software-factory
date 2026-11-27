@@ -1,6 +1,9 @@
 export interface NotificationReadProvider {
-  markRead(recipientId: number, notificationId: string): boolean;
-  markAllRead(recipientId: number): boolean;
+  markRead(
+    recipientId: number,
+    notificationId: string
+  ): boolean | Promise<boolean>;
+  markAllRead(recipientId: number): boolean | Promise<boolean>;
 }
 
 export type NotificationReadResult =
@@ -10,12 +13,12 @@ export function createNotificationReadService(
   provider: NotificationReadProvider
 ) {
   return {
-    markRead(
+    async markRead(
       recipientId: number,
       notificationId: string
-    ): NotificationReadResult {
+    ): Promise<NotificationReadResult> {
       try {
-        return provider.markRead(recipientId, notificationId)
+        return (await provider.markRead(recipientId, notificationId))
           ? { ok: true }
           : { ok: false, reason: "provider-rejected" };
       } catch {
@@ -23,9 +26,9 @@ export function createNotificationReadService(
       }
     },
 
-    markAllRead(recipientId: number): NotificationReadResult {
+    async markAllRead(recipientId: number): Promise<NotificationReadResult> {
       try {
-        return provider.markAllRead(recipientId)
+        return (await provider.markAllRead(recipientId))
           ? { ok: true }
           : { ok: false, reason: "provider-rejected" };
       } catch {

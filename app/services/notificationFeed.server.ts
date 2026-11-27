@@ -12,20 +12,14 @@ import {
   UserRole,
 } from "~/db/schema";
 import {
-  fakeKnockAdapter,
-  type NotificationPage,
+  type NotificationFeedProvider,
   type ProviderNotification,
 } from "~/services/notificationProvider";
+import { notificationProvider } from "~/services/notificationProvider.server";
 import { notificationOperations } from "~/services/notificationOperations.server";
 
 type NotificationDatabase = typeof db;
-type FeedProvider = {
-  list(recipientId: number): ProviderNotification[];
-  listPage?(
-    recipientId: number,
-    options?: { cursor?: string; pageSize?: number }
-  ): NotificationPage;
-};
+type FeedListingProvider = Pick<NotificationFeedProvider, "listPage">;
 type AuthorizationCheck = (
   recipientId: number,
   courseId: number
@@ -162,7 +156,7 @@ function temporaryFailure(
 
 export function createNotificationFeedService(
   database: NotificationDatabase,
-  provider: FeedProvider,
+  provider: FeedListingProvider,
   canAccess: AuthorizationCheck = defaultAuthorizationCheck(database)
 ) {
   async function enrich(
@@ -255,30 +249,23 @@ export function createNotificationFeedService(
 
   return {
     async list(recipientId: number): Promise<EnrichedNotification[]> {
-      return enrich(recipientId, provider.list(recipientId));
+      const notifications: ProviderNotification[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await provider.listPage(recipientId, {
+          cursor,
+          pageSize: 50,
+        });
+        notifications.push(...page.items);
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return enrich(recipientId, notifications);
     },
     async listPage(
       recipientId: number,
       options: { cursor?: string; pageSize?: number } = {}
     ) {
-      const page = provider.listPage
-        ? provider.listPage(recipientId, options)
-        : (() => {
-            const items = provider.list(recipientId);
-            const offset = options.cursor
-              ? Number.parseInt(options.cursor, 10)
-              : 0;
-            const safeOffset =
-              Number.isFinite(offset) && offset >= 0 ? offset : 0;
-            const pageSize = options.pageSize ?? 20;
-            const pageItems = items.slice(safeOffset, safeOffset + pageSize);
-            const nextOffset = safeOffset + pageItems.length;
-            return {
-              items: pageItems,
-              unreadCount: items.filter((item) => item.readAt === null).length,
-              nextCursor: nextOffset < items.length ? String(nextOffset) : null,
-            };
-          })();
+      const page = await provider.listPage(recipientId, options);
 
       return { ...page, items: await enrich(recipientId, page.items) };
     },
@@ -291,9 +278,11 @@ export function getNotificationFeed(
 ) {
   if (!notificationOperations.getControls().feedEnabled)
     return Promise.resolve([]);
-  return createNotificationFeedService(db, fakeKnockAdapter, canAccess).list(
-    userId
-  );
+  return createNotificationFeedService(
+    db,
+    notificationProvider,
+    canAccess
+  ).list(userId);
 }
 
 export function getNotificationFeedPage(
@@ -306,7 +295,7 @@ export function getNotificationFeedPage(
   }
   return createNotificationFeedService(
     db,
-    fakeKnockAdapter,
+    notificationProvider,
     canAccess
   ).listPage(userId, options);
 }

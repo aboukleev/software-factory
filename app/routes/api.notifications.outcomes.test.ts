@@ -82,18 +82,18 @@ describe("POST /api/notifications/outcomes", () => {
 
   test("rejects an invalid signature without recording an outcome", async () => {
     const recordOutcome = vi.fn();
-    const response = await createNotificationOutcomeAction({
-      secret: "secret",
-      recordOutcome,
-    })({
-      request: new Request("http://cadence.test/api/notifications/outcomes", {
-        method: "POST",
-        headers: { "x-knock-signature": "t=1,s=invalid" },
-        body: "{}",
-      }),
-    });
-
-    expect(response.status).toBe(401);
+    await expect(
+      createNotificationOutcomeAction({
+        secret: "secret",
+        recordOutcome,
+      })({
+        request: new Request("http://cadence.test/api/notifications/outcomes", {
+          method: "POST",
+          headers: { "x-knock-signature": "t=1,s=invalid" },
+          body: "{}",
+        }),
+      })
+    ).rejects.toMatchObject({ status: 401 });
     expect(recordOutcome).not.toHaveBeenCalled();
   });
 });

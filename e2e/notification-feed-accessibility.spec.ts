@@ -60,12 +60,14 @@ test("the quick Notification Feed is modal, responsive, and accessible", async (
   const feed = dialog.getByRole("region", { name: "Notification Feed" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute("aria-modal", "true");
-  await expect(feed.getByRole("heading", { name: "Notification Feed" })).toBeFocused();
+  await expect(
+    feed.getByRole("heading", { name: "Notification Feed" })
+  ).toBeFocused();
   await expect(bell).toHaveAttribute("aria-expanded", "true");
 
   const item = feed.getByRole("link", {
     name: new RegExp(
-      `Unread\\. A Student asked a Question\\. Introduction to TypeScript\\. What is TypeScript\\?\\. ${preview} .+\\d`
+      `Unread\\. A Student asked a Question\\. Introduction to TypeScript · What is TypeScript\\? ${preview} .+\\d`
     ),
   });
   await expect(item).toBeVisible();
@@ -74,30 +76,35 @@ test("the quick Notification Feed is modal, responsive, and accessible", async (
 
   const box = await dialog.boundingBox();
   expect(box).not.toBeNull();
+  if (!box) throw new Error("Notification Feed has no bounding box");
   if (testInfo.project.name === "narrow-chrome") {
     expect(box).toEqual({ x: 0, y: 0, width: 390, height: 844 });
   } else {
-    expect(box!.width).toBeLessThanOrEqual(384);
-    expect(box!.height).toBeLessThan(800);
+    expect(box.width).toBeLessThanOrEqual(384);
+    expect(box.height).toBeLessThan(800);
   }
 
   const close = dialog.getByRole("button", { name: "Close Notification Feed" });
   for (const control of [bell, close]) {
     const controlBox = await control.boundingBox();
-    expect(controlBox!.width).toBeGreaterThanOrEqual(44);
-    expect(controlBox!.height).toBeGreaterThanOrEqual(44);
+    if (!controlBox)
+      throw new Error("Notification control has no bounding box");
+    expect(controlBox.width).toBeGreaterThanOrEqual(44);
+    expect(controlBox.height).toBeGreaterThanOrEqual(44);
   }
 
   await page.keyboard.press("Shift+Tab");
   await expect(dialog).toContainText("Notification Feed");
-  expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+  expect(
+    await dialog.evaluate((node) => node.contains(document.activeElement))
+  ).toBe(true);
 
   const accessibility = await new AxeBuilder({ page })
     .include('[role="dialog"]')
     .analyze();
   expect(
-    accessibility.violations.filter(({ impact }) =>
-      impact === "serious" || impact === "critical"
+    accessibility.violations.filter(
+      ({ impact }) => impact === "serious" || impact === "critical"
     )
   ).toEqual([]);
 
@@ -116,18 +123,22 @@ test("opening the full Notification Feed transfers focus coherently", async ({
   const bell = page.getByRole("button", { name: /Notification Feed/ });
   await bell.click();
   const dialog = page.getByRole("dialog", { name: "Notification Feed" });
-  await dialog.getByRole("link", { name: "Open full Notification Feed" }).click();
+  await dialog
+    .getByRole("link", { name: "Open full Notification Feed" })
+    .click();
 
   await expect(page).toHaveURL(/\/notifications$/);
   await expect(dialog).toHaveCount(0);
   const feed = page.getByRole("region", { name: "Notification Feed" });
-  await expect(feed.getByRole("heading", { name: "Notification Feed" })).toBeFocused();
+  await expect(
+    feed.getByRole("heading", { name: "Notification Feed" })
+  ).toBeFocused();
   const accessibility = await new AxeBuilder({ page })
     .include('[aria-label="Notification Feed"]')
     .analyze();
   expect(
-    accessibility.violations.filter(({ impact }) =>
-      impact === "serious" || impact === "critical"
+    accessibility.violations.filter(
+      ({ impact }) => impact === "serious" || impact === "critical"
     )
   ).toEqual([]);
 });
