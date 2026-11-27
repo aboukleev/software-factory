@@ -15,6 +15,12 @@ import {
 } from "~/services/notificationOperations.server";
 import { createTestDb, seedBaseData } from "~/test/setup";
 
+function required<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined)
+    throw new Error("Expected test fixture value");
+  return value;
+}
+
 function fixture() {
   const database = createTestDb();
   const { user, course } = seedBaseData(database);
@@ -84,7 +90,9 @@ describe("Notification operations", () => {
       database,
       vi.fn()
     );
-    const delivery = database.select().from(notificationDeliveries).get()!;
+    const delivery = required(
+      database.select().from(notificationDeliveries).get()
+    );
     database
       .update(notificationDeliveries)
       .set({ nextAttemptAt: "2026-11-26T12:00:00.000Z" })

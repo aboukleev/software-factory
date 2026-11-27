@@ -10,6 +10,26 @@ import {
 } from "~/db/schema";
 
 type OperationsDatabase = typeof db;
+export type DeliveryStatus = typeof notificationDeliveries.$inferSelect.status;
+export type NotificationOutcomeCode =
+  | DeliveryStatus
+  | "created"
+  | "first_attempt"
+  | "retry_attempt"
+  | "expired_lease_recovered"
+  | "retry_window_expired"
+  | "source_or_recipient_deleted"
+  | "invalid_immutable_payload"
+  | "provider_accepted"
+  | "provider_permanent"
+  | "provider_physical_duplicate"
+  | "provider_workflow_skipped"
+  | "provider_outcome_permanent"
+  | "provider_outcome_ambiguous"
+  | "retry_exhausted"
+  | "timeout_ambiguous"
+  | "network_ambiguous"
+  | `http_${number}`;
 export type NotificationControlState = {
   creationEnabled: boolean;
   dispatchEnabled: boolean;
@@ -83,9 +103,10 @@ export function createNotificationOperations({
       ...values,
       updatedAt: now().toISOString(),
     };
+    const updatedAt = next.updatedAt;
     database
       .insert(notificationOperationControls)
-      .values({ id: 1, ...next, updatedAt: next.updatedAt! })
+      .values({ id: 1, ...next, updatedAt })
       .onConflictDoUpdate({
         target: notificationOperationControls.id,
         set: next,
@@ -114,9 +135,9 @@ export function createNotificationOperations({
 
   function recordTransition(
     deliveryId: number,
-    fromStatus: string | null,
-    toStatus: string,
-    outcomeCode: string,
+    fromStatus: DeliveryStatus | null,
+    toStatus: DeliveryStatus,
+    outcomeCode: NotificationOutcomeCode,
     occurredAt = now().toISOString()
   ) {
     const correlation = database

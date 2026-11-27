@@ -190,16 +190,22 @@ describe("Notification Feed enrichment", () => {
       .set({ deletedAt: new Date().toISOString() })
       .where(eq(comments.id, question.id))
       .run();
-    const durableEvent = database.select().from(notificationEvents).get()!;
-    const original = provider.list(instructor.id)[0]!;
+    const durableEvent = database.select().from(notificationEvents).get();
+    const original = provider.list(instructor.id)[0];
+    if (!durableEvent || !original)
+      throw new Error("Expected a delivered Notification");
     const tamperedProvider = {
-      list: () => [
-        {
-          ...original,
-          eventIdentity: durableEvent.identity,
-          lessonId: lesson.id + 999,
-        },
-      ],
+      listPage: () => ({
+        items: [
+          {
+            ...original,
+            eventIdentity: durableEvent.identity,
+            lessonId: lesson.id + 999,
+          },
+        ],
+        unreadCount: 1,
+        nextCursor: null,
+      }),
     };
 
     const [deleted] = await createNotificationFeedService(

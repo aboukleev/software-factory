@@ -166,10 +166,11 @@ export async function action({ request }: Route.ActionArgs) {
   // Answering as the course's voice — so it must be the course's own
   // instructor, or an admin.
   const access = await requireStaff(request, course.courseId);
+  if (!access.userId) throw data("You must be logged in", { status: 401 });
 
   try {
     createDiscussionPost({
-      authorization: { userId: access.userId!, courseId: course.courseId },
+      authorization: { userId: access.userId, courseId: course.courseId },
       lessonId: question.lessonId,
       parentId: question.id,
       body: parsed.data.body,

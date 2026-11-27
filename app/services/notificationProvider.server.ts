@@ -13,7 +13,10 @@ export function createNotificationProvider(
 ): NotificationProvider {
   return config.mode === "fake"
     ? fakeKnockAdapter
-    : new KnockNotificationProvider({ secretApiKey: config.secretApiKey });
+    : new KnockNotificationProvider({
+        secretApiKey: config.secretApiKey,
+        feedChannelId: config.feedChannelId,
+      });
 }
 
 export function getNotificationProvider(

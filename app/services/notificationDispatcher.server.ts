@@ -11,9 +11,10 @@ import {
   notificationPayloadSchema,
   NotificationProviderError,
   type NotificationPayload,
-  type NotificationProvider,
+  type NotificationDeliveryProvider,
 } from "~/services/notificationProvider";
 import { createNotificationOperations } from "~/services/notificationOperations.server";
+import type { NotificationOutcomeCode } from "~/services/notificationOperations.server";
 
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
 const DEFAULT_LEASE_MS = 120_000;
@@ -32,7 +33,7 @@ type DispatcherDatabase = typeof db;
 
 type DispatcherOptions = {
   database?: DispatcherDatabase;
-  provider: NotificationProvider;
+  provider: NotificationDeliveryProvider;
   ownerId?: string;
   concurrency?: number;
   pollIntervalMs?: number;
@@ -57,8 +58,9 @@ type ExpiredDelivery = {
 };
 
 type Failure = {
-  category: string;
+  category: NotificationOutcomeCode;
   retryable: boolean;
+  outcomeUnknown?: boolean;
   retryAfterMs?: number;
 };
 
@@ -73,12 +75,24 @@ function classifyFailure(error: unknown): Failure {
     };
   }
   if (error instanceof DOMException && error.name === "AbortError") {
-    return { category: "timeout", retryable: true };
+    return {
+      category: "timeout_ambiguous",
+      retryable: false,
+      outcomeUnknown: true,
+    };
   }
   if (error instanceof Error && error.message === "provider_timeout") {
-    return { category: "timeout", retryable: true };
+    return {
+      category: "timeout_ambiguous",
+      retryable: false,
+      outcomeUnknown: true,
+    };
   }
-  return { category: "network", retryable: true };
+  return {
+    category: "network_ambiguous",
+    retryable: false,
+    outcomeUnknown: true,
+  };
 }
 
 function timerUnref(timer: ReturnType<typeof setTimeout>) {
@@ -226,7 +240,7 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
   function finish(
     deliveryId: number,
     values: Partial<typeof notificationDeliveries.$inferInsert>,
-    outcomeCode: string
+    outcomeCode: NotificationOutcomeCode
   ) {
     const before = database
       .select({ status: notificationDeliveries.status })
@@ -258,6 +272,19 @@ export function createNotificationDispatcher(options: DispatcherOptions) {
   function scheduleFailure(delivery: ClaimedDelivery, failure: Failure) {
     const failureTime = now();
     const failureIso = failureTime.toISOString();
+    if (failure.outcomeUnknown) {
+      finish(
+        delivery.id,
+        {
+          status: "outcome_unknown",
+          errorCategory: failure.category,
+          outcomeCheckedAt: failureIso,
+          outcomeNextCheckAt: null,
+        },
+        failure.category
+      );
+      return;
+    }
     if (!failure.retryable) {
       finish(
         delivery.id,

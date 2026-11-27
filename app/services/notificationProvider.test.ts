@@ -195,9 +195,124 @@ describe("FakeKnockAdapter", () => {
 });
 
 describe("KnockNotificationProvider", () => {
+  test("uses Knock as the authoritative person-scoped Feed and read store", async () => {
+    const payload = {
+      eventIdentity: "question.created:42",
+      eventKind: "question.created" as const,
+      occurredAt: "2026-11-24T10:00:00.000Z",
+      sourceCommentId: 42,
+      rootQuestionId: 42,
+      recipientId: 7,
+      courseId: 3,
+      lessonId: 9,
+    };
+    const feedResponse = (
+      entries: unknown[],
+      after: string | null,
+      unreadCount: number
+    ) =>
+      new Response(
+        JSON.stringify({
+          entries,
+          meta: { unread_count: unreadCount },
+          page_info: { after },
+        })
+      );
+    const entry = {
+      id: "msg_42",
+      read_at: null,
+      data: payload,
+      source: { key: "student-question-created" },
+    };
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(feedResponse([entry], "cursor_2", 2))
+      .mockResolvedValueOnce(feedResponse([entry], null, 2))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "msg_42" }), { status: 200 })
+      )
+      .mockResolvedValueOnce(feedResponse([entry], null, 1))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ id: "msg_42" }]), {
+          status: 200,
+        })
+      );
+    const provider = new KnockNotificationProvider({
+      secretApiKey: "sk_test_secret",
+      feedChannelId: "feed/channel",
+      request,
+    });
+
+    await expect(
+      provider.listPage(7, { cursor: "cursor_1", pageSize: 1 })
+    ).resolves.toEqual({
+      items: [
+        {
+          ...payload,
+          id: "msg_42",
+          idempotencyKey: "question.created:42:7:in_app",
+          readAt: null,
+        },
+      ],
+      unreadCount: 2,
+      nextCursor: "cursor_2",
+    });
+    await expect(provider.markRead(7, "msg_42")).resolves.toBe(true);
+    await expect(provider.markAllRead(7)).resolves.toBe(true);
+
+    expect(request.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.knock.app/v1/users/7/feeds/feed%2Fchannel?status=all&archived=exclude&mode=compact&page_size=1&after=cursor_1",
+      "https://api.knock.app/v1/users/7/feeds/feed%2Fchannel?status=all&archived=exclude&mode=compact&page_size=50",
+      "https://api.knock.app/v1/messages/msg_42/read",
+      "https://api.knock.app/v1/users/7/feeds/feed%2Fchannel?status=unread&archived=exclude&mode=compact&page_size=50",
+      "https://api.knock.app/v1/messages/batch/read",
+    ]);
+    expect(request).toHaveBeenLastCalledWith(
+      "https://api.knock.app/v1/messages/batch/read",
+      expect.objectContaining({
+        body: JSON.stringify({ message_ids: ["msg_42"] }),
+      })
+    );
+  });
+
+  test("rejects Feed data outside the allowlist or authenticated person scope", async () => {
+    const provider = new KnockNotificationProvider({
+      secretApiKey: "sk_test_secret",
+      feedChannelId: "feed_test",
+      request: async () =>
+        new Response(
+          JSON.stringify({
+            entries: [
+              {
+                id: "msg_42",
+                read_at: null,
+                data: {
+                  eventIdentity: "question.created:42",
+                  eventKind: "question.created",
+                  occurredAt: "2026-11-24T10:00:00.000Z",
+                  sourceCommentId: 42,
+                  rootQuestionId: 42,
+                  recipientId: 8,
+                  courseId: 3,
+                  lessonId: 9,
+                  preview: "must not enter Knock",
+                },
+                source: { key: "student-question-created" },
+              },
+            ],
+            meta: { unread_count: 1 },
+            page_info: { after: null },
+          })
+        ),
+    });
+
+    await expect(provider.listPage(7)).rejects.toThrow();
+  });
+
   test("refuses to represent archive as per-message permanent deletion", () => {
     const provider = new KnockNotificationProvider({
       secretApiKey: "sk_test_secret",
+      feedChannelId: "feed_test",
       request: vi.fn(),
     });
 
@@ -216,6 +331,7 @@ describe("KnockNotificationProvider", () => {
     const request = vi.fn(async () => new Response(null, { status: 204 }));
     const provider = new KnockNotificationProvider({
       secretApiKey: "sk_test_secret",
+      feedChannelId: "feed_test",
       request,
     });
 
@@ -250,6 +366,7 @@ describe("KnockNotificationProvider", () => {
     );
     const provider = new KnockNotificationProvider({
       secretApiKey: "sk_test_secret",
+      feedChannelId: "feed_test",
       request,
     });
     const payload = {
@@ -283,6 +400,7 @@ describe("KnockNotificationProvider", () => {
   test("rejects a failed trigger with content-free provider evidence", async () => {
     const provider = new KnockNotificationProvider({
       secretApiKey: "sk_test_secret",
+      feedChannelId: "feed_test",
       request: async () =>
         new Response(JSON.stringify({ error: "may contain sensitive data" }), {
           status: 422,
@@ -308,6 +426,7 @@ describe("KnockNotificationProvider", () => {
     const request = vi.fn<typeof fetch>();
     const provider = new KnockNotificationProvider({
       secretApiKey: "sk_test_secret",
+      feedChannelId: "feed_test",
       request,
     });
     const unsafePayload = {
@@ -346,6 +465,7 @@ describe("KnockNotificationProvider", () => {
     );
     const provider = new KnockNotificationProvider({
       secretApiKey: "sk_test_secret",
+      feedChannelId: "feed_test",
       request,
     });
 
@@ -412,6 +532,7 @@ describe("KnockNotificationProvider", () => {
     ];
     const provider = new KnockNotificationProvider({
       secretApiKey: "sk_test_secret",
+      feedChannelId: "feed_test",
       request: vi.fn(
         async () => new Response(JSON.stringify(responses.shift()))
       ),

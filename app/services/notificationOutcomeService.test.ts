@@ -20,6 +20,12 @@ import { createNotificationDispatcher } from "~/services/notificationDispatcher.
 import { FakeKnockAdapter } from "~/services/notificationProvider";
 import { createTestDb, seedBaseData } from "~/test/setup";
 
+function required<T>(value: T | null | undefined): T {
+  if (value === null || value === undefined)
+    throw new Error("Expected test fixture value");
+  return value;
+}
+
 function fixture(
   status: typeof notificationDeliveries.$inferInsert.status = "accepted"
 ) {
@@ -96,11 +102,12 @@ function fixture(
 }
 
 function row(f: ReturnType<typeof fixture>) {
-  return f.database
+  const delivery = f.database
     .select()
     .from(notificationDeliveries)
     .where(eq(notificationDeliveries.id, f.delivery.id))
-    .get()!;
+    .get();
+  return required(delivery);
 }
 
 describe("Delivery outcome state machine", () => {

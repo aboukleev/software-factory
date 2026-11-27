@@ -43,17 +43,17 @@ export function createNotificationOutcomeAction({
         now()
       )
     ) {
-      return new Response(null, { status: 401 });
+      throw new Response(null, { status: 401 });
     }
 
     let json: unknown;
     try {
       json = JSON.parse(body);
     } catch {
-      return new Response(null, { status: 400 });
+      throw new Response(null, { status: 400 });
     }
     const parsed = messageOutcomeSchema.safeParse(json);
-    if (!parsed.success) return new Response(null, { status: 400 });
+    if (!parsed.success) throw new Response(null, { status: 400 });
     const event = parsed.data;
     recordOutcome({
       providerEventId: event.id,

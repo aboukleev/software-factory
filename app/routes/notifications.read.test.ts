@@ -6,6 +6,11 @@ const session = vi.hoisted(() => ({ getCurrentUserId: vi.fn() }));
 vi.mock("~/lib/session", () => ({
   getCurrentUserId: session.getCurrentUserId,
 }));
+vi.mock("~/services/notificationOperations.server", () => ({
+  notificationOperations: {
+    getControls: () => ({ feedEnabled: true }),
+  },
+}));
 
 function request(values: Record<string, string>) {
   return new Request("http://cadence.test/notifications/read", {
@@ -45,15 +50,23 @@ describe("Notification read action", () => {
     expect(fakeKnockAdapter.list(8)[0]?.readAt).toBeNull();
   });
 
-  test("returns a recoverable failure instead of throwing", async () => {
+  test("throws a recoverable failed Response", async () => {
     add("mine");
     fakeKnockAdapter.failNextRead();
-    const response = await action({
-      request: request({ intent: "mark-read", notificationId: "mine" }),
-    } as never);
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ ok: false });
+    await expect(
+      action({
+        request: request({ intent: "mark-read", notificationId: "mine" }),
+      } as never)
+    ).rejects.toMatchObject({ status: 503 });
     expect(fakeKnockAdapter.list(7)[0]?.readAt).toBeNull();
+  });
+
+  test("rejects malformed untrusted form values", async () => {
+    await expect(
+      action({
+        request: request({ intent: "mark-read", notificationId: "" }),
+      } as never)
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   test("marks every provider-side Notification read", async () => {

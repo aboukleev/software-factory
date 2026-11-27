@@ -346,7 +346,10 @@ export function NotificationFeed({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="notification-feed">
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="notification-feed"
+    >
       <div className="mb-2 flex min-h-11 items-center justify-between gap-3 pr-11">
         <h2 ref={headingRef} tabIndex={-1} className="font-semibold">
           Notification Feed
@@ -445,7 +448,7 @@ export function NotificationFeed({
                   {item.availability === "available" && (
                     <>
                       <span className="block text-xs text-muted-foreground">
-                        {item.courseTitle}. {item.lessonTitle}.
+                        {item.courseTitle} · {item.lessonTitle}
                       </span>
                       {item.preview && (
                         <span className="block truncate text-xs text-muted-foreground">
