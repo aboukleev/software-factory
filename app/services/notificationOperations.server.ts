@@ -37,9 +37,9 @@ function summarizeLatency(values: number[]) {
 }
 
 const defaultControls: NotificationControlState = {
-  creationEnabled: true,
+  creationEnabled: false,
   dispatchEnabled: true,
-  feedEnabled: true,
+  feedEnabled: false,
   updatedAt: null,
 };
 

@@ -36,6 +36,18 @@ function fixture() {
 }
 
 describe("Notification operations", () => {
+  test("defaults to the dark-deploy control state before an operator enables launch", () => {
+    const { database } = fixture();
+    const operations = createNotificationOperations({ database });
+
+    expect(operations.getControls()).toEqual({
+      creationEnabled: false,
+      dispatchEnabled: true,
+      feedEnabled: false,
+      updatedAt: null,
+    });
+  });
+
   test("changes independent durable controls without redeployment", () => {
     const { database } = fixture();
     const operations = createNotificationOperations({
@@ -47,7 +59,7 @@ describe("Notification operations", () => {
     expect(operations.getControls()).toEqual({
       creationEnabled: false,
       dispatchEnabled: true,
-      feedEnabled: true,
+      feedEnabled: false,
       updatedAt: "2026-11-26T12:00:00.000Z",
     });
 

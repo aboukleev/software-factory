@@ -102,9 +102,9 @@ async function seed() {
   db.insert(schema.notificationOperationControls)
     .values({
       id: 1,
-      creationEnabled: true,
+      creationEnabled: false,
       dispatchEnabled: true,
-      feedEnabled: true,
+      feedEnabled: false,
       updatedAt: new Date().toISOString(),
     })
     .run();
