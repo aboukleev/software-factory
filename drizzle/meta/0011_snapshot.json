@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "651f379b-746d-461e-b7e3-629615998923",
-  "prevId": "bbe49cdc-023b-49e7-bf7d-6cd92deac1b7",
+  "id": "5a5a8760-1855-49be-8dca-e0bb233adfa8",
+  "prevId": "9c9ed94b-6445-46fa-9516-5b242ed185bd",
   "tables": {
     "categories": {
       "name": "categories",
@@ -32,9 +32,7 @@
       "indexes": {
         "categories_slug_unique": {
           "name": "categories_slug_unique",
-          "columns": [
-            "slug"
-          ],
+          "columns": ["slug"],
           "isUnique": true
         }
       },
@@ -106,16 +104,12 @@
       "indexes": {
         "comments_lesson_idx": {
           "name": "comments_lesson_idx",
-          "columns": [
-            "lesson_id"
-          ],
+          "columns": ["lesson_id"],
           "isUnique": false
         },
         "comments_parent_idx": {
           "name": "comments_parent_idx",
-          "columns": [
-            "parent_id"
-          ],
+          "columns": ["parent_id"],
           "isUnique": false
         }
       },
@@ -124,12 +118,8 @@
           "name": "comments_lesson_id_lessons_id_fk",
           "tableFrom": "comments",
           "tableTo": "lessons",
-          "columnsFrom": [
-            "lesson_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["lesson_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -137,12 +127,8 @@
           "name": "comments_user_id_users_id_fk",
           "tableFrom": "comments",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -150,12 +136,8 @@
           "name": "comments_parent_id_comments_id_fk",
           "tableFrom": "comments",
           "tableTo": "comments",
-          "columnsFrom": [
-            "parent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["parent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -227,9 +209,7 @@
       "indexes": {
         "coupons_code_unique": {
           "name": "coupons_code_unique",
-          "columns": [
-            "code"
-          ],
+          "columns": ["code"],
           "isUnique": true
         }
       },
@@ -238,12 +218,8 @@
           "name": "coupons_team_id_teams_id_fk",
           "tableFrom": "coupons",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -251,12 +227,8 @@
           "name": "coupons_course_id_courses_id_fk",
           "tableFrom": "coupons",
           "tableTo": "courses",
-          "columnsFrom": [
-            "course_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["course_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -264,12 +236,8 @@
           "name": "coupons_purchase_id_purchases_id_fk",
           "tableFrom": "coupons",
           "tableTo": "purchases",
-          "columnsFrom": [
-            "purchase_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["purchase_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -277,12 +245,8 @@
           "name": "coupons_redeemed_by_user_id_users_id_fk",
           "tableFrom": "coupons",
           "tableTo": "users",
-          "columnsFrom": [
-            "redeemed_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["redeemed_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -340,10 +304,7 @@
       "indexes": {
         "course_ratings_user_course_unique": {
           "name": "course_ratings_user_course_unique",
-          "columns": [
-            "user_id",
-            "course_id"
-          ],
+          "columns": ["user_id", "course_id"],
           "isUnique": true
         }
       },
@@ -352,12 +313,8 @@
           "name": "course_ratings_user_id_users_id_fk",
           "tableFrom": "course_ratings",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -365,12 +322,8 @@
           "name": "course_ratings_course_id_courses_id_fk",
           "tableFrom": "course_ratings",
           "tableTo": "courses",
-          "columnsFrom": [
-            "course_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["course_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -486,9 +439,7 @@
       "indexes": {
         "courses_slug_unique": {
           "name": "courses_slug_unique",
-          "columns": [
-            "slug"
-          ],
+          "columns": ["slug"],
           "isUnique": true
         }
       },
@@ -497,12 +448,8 @@
           "name": "courses_instructor_id_users_id_fk",
           "tableFrom": "courses",
           "tableTo": "users",
-          "columnsFrom": [
-            "instructor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["instructor_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -510,12 +457,8 @@
           "name": "courses_category_id_categories_id_fk",
           "tableFrom": "courses",
           "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -566,9 +509,7 @@
       "indexes": {
         "enrollments_course_idx": {
           "name": "enrollments_course_idx",
-          "columns": [
-            "course_id"
-          ],
+          "columns": ["course_id"],
           "isUnique": false
         }
       },
@@ -577,12 +518,8 @@
           "name": "enrollments_user_id_users_id_fk",
           "tableFrom": "enrollments",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -590,12 +527,8 @@
           "name": "enrollments_course_id_courses_id_fk",
           "tableFrom": "enrollments",
           "tableTo": "courses",
-          "columnsFrom": [
-            "course_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["course_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -646,10 +579,7 @@
       "indexes": {
         "lesson_progress_user_lesson_idx": {
           "name": "lesson_progress_user_lesson_idx",
-          "columns": [
-            "user_id",
-            "lesson_id"
-          ],
+          "columns": ["user_id", "lesson_id"],
           "isUnique": false
         }
       },
@@ -658,12 +588,8 @@
           "name": "lesson_progress_user_id_users_id_fk",
           "tableFrom": "lesson_progress",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -671,12 +597,8 @@
           "name": "lesson_progress_lesson_id_lessons_id_fk",
           "tableFrom": "lesson_progress",
           "tableTo": "lessons",
-          "columnsFrom": [
-            "lesson_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["lesson_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -758,12 +680,8 @@
           "name": "lessons_module_id_modules_id_fk",
           "tableFrom": "lessons",
           "tableTo": "modules",
-          "columnsFrom": [
-            "module_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["module_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -817,12 +735,354 @@
           "name": "modules_course_id_courses_id_fk",
           "tableFrom": "modules",
           "tableTo": "courses",
-          "columnsFrom": [
-            "course_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["course_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "notification_deliveries": {
+      "name": "notification_deliveries",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "notification_event_id": {
+          "name": "notification_event_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recipient_id": {
+          "name": "recipient_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "workflow_key": {
+          "name": "workflow_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_payload": {
+          "name": "provider_payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lease_owner": {
+          "name": "lease_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "first_attempt_at": {
+          "name": "first_attempt_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_attempt_at": {
+          "name": "last_attempt_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "terminal_at": {
+          "name": "terminal_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "error_category": {
+          "name": "error_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_request_id": {
+          "name": "provider_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provider_workflow_run_id": {
+          "name": "provider_workflow_run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "notification_deliveries_event_recipient_channel_unique": {
+          "name": "notification_deliveries_event_recipient_channel_unique",
+          "columns": ["notification_event_id", "recipient_id", "channel"],
+          "isUnique": true
+        },
+        "notification_deliveries_idempotency_unique": {
+          "name": "notification_deliveries_idempotency_unique",
+          "columns": ["idempotency_key"],
+          "isUnique": true
+        },
+        "notification_deliveries_due_idx": {
+          "name": "notification_deliveries_due_idx",
+          "columns": ["status", "next_attempt_at"],
+          "isUnique": false
+        },
+        "notification_deliveries_lease_idx": {
+          "name": "notification_deliveries_lease_idx",
+          "columns": ["status", "lease_expires_at"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "notification_deliveries_notification_event_id_notification_events_id_fk": {
+          "name": "notification_deliveries_notification_event_id_notification_events_id_fk",
+          "tableFrom": "notification_deliveries",
+          "tableTo": "notification_events",
+          "columnsFrom": ["notification_event_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "notification_deliveries_recipient_id_users_id_fk": {
+          "name": "notification_deliveries_recipient_id_users_id_fk",
+          "tableFrom": "notification_deliveries",
+          "tableTo": "users",
+          "columnsFrom": ["recipient_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "notification_events": {
+      "name": "notification_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "identity": {
+          "name": "identity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_comment_id": {
+          "name": "source_comment_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "root_question_id": {
+          "name": "root_question_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_capacity": {
+          "name": "actor_capacity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recipient_id": {
+          "name": "recipient_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "course_id": {
+          "name": "course_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lesson_id": {
+          "name": "lesson_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "notification_events_identity_unique": {
+          "name": "notification_events_identity_unique",
+          "columns": ["identity"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "notification_events_source_comment_id_comments_id_fk": {
+          "name": "notification_events_source_comment_id_comments_id_fk",
+          "tableFrom": "notification_events",
+          "tableTo": "comments",
+          "columnsFrom": ["source_comment_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "notification_events_root_question_id_comments_id_fk": {
+          "name": "notification_events_root_question_id_comments_id_fk",
+          "tableFrom": "notification_events",
+          "tableTo": "comments",
+          "columnsFrom": ["root_question_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "notification_events_actor_id_users_id_fk": {
+          "name": "notification_events_actor_id_users_id_fk",
+          "tableFrom": "notification_events",
+          "tableTo": "users",
+          "columnsFrom": ["actor_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "notification_events_recipient_id_users_id_fk": {
+          "name": "notification_events_recipient_id_users_id_fk",
+          "tableFrom": "notification_events",
+          "tableTo": "users",
+          "columnsFrom": ["recipient_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "notification_events_course_id_courses_id_fk": {
+          "name": "notification_events_course_id_courses_id_fk",
+          "tableFrom": "notification_events",
+          "tableTo": "courses",
+          "columnsFrom": ["course_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "notification_events_lesson_id_lessons_id_fk": {
+          "name": "notification_events_lesson_id_lessons_id_fk",
+          "tableFrom": "notification_events",
+          "tableTo": "lessons",
+          "columnsFrom": ["lesson_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -880,9 +1140,7 @@
       "indexes": {
         "purchases_course_idx": {
           "name": "purchases_course_idx",
-          "columns": [
-            "course_id"
-          ],
+          "columns": ["course_id"],
           "isUnique": false
         }
       },
@@ -891,12 +1149,8 @@
           "name": "purchases_user_id_users_id_fk",
           "tableFrom": "purchases",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -904,12 +1158,8 @@
           "name": "purchases_course_id_courses_id_fk",
           "tableFrom": "purchases",
           "tableTo": "courses",
-          "columnsFrom": [
-            "course_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["course_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -956,12 +1206,8 @@
           "name": "quiz_answers_attempt_id_quiz_attempts_id_fk",
           "tableFrom": "quiz_answers",
           "tableTo": "quiz_attempts",
-          "columnsFrom": [
-            "attempt_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["attempt_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -969,12 +1215,8 @@
           "name": "quiz_answers_question_id_quiz_questions_id_fk",
           "tableFrom": "quiz_answers",
           "tableTo": "quiz_questions",
-          "columnsFrom": [
-            "question_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["question_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -982,12 +1224,8 @@
           "name": "quiz_answers_selected_option_id_quiz_options_id_fk",
           "tableFrom": "quiz_answers",
           "tableTo": "quiz_options",
-          "columnsFrom": [
-            "selected_option_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["selected_option_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1048,12 +1286,8 @@
           "name": "quiz_attempts_user_id_users_id_fk",
           "tableFrom": "quiz_attempts",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1061,12 +1295,8 @@
           "name": "quiz_attempts_quiz_id_quizzes_id_fk",
           "tableFrom": "quiz_attempts",
           "tableTo": "quizzes",
-          "columnsFrom": [
-            "quiz_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["quiz_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1113,12 +1343,8 @@
           "name": "quiz_options_question_id_quiz_questions_id_fk",
           "tableFrom": "quiz_options",
           "tableTo": "quiz_questions",
-          "columnsFrom": [
-            "question_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["question_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1172,12 +1398,8 @@
           "name": "quiz_questions_quiz_id_quizzes_id_fk",
           "tableFrom": "quiz_questions",
           "tableTo": "quizzes",
-          "columnsFrom": [
-            "quiz_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["quiz_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1224,12 +1446,8 @@
           "name": "quizzes_lesson_id_lessons_id_fk",
           "tableFrom": "quizzes",
           "tableTo": "lessons",
-          "columnsFrom": [
-            "lesson_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["lesson_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1238,8 +1456,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "refund_requests": {
-      "name": "refund_requests",
+    "refunds": {
+      "name": "refunds",
       "columns": {
         "id": {
           "name": "id",
@@ -1261,7 +1479,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'open'"
+          "default": "'requested'"
         },
         "reason": {
           "name": "reason",
@@ -1276,38 +1494,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "eligibility_completed_lessons": {
-          "name": "eligibility_completed_lessons",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "eligibility_total_lessons": {
-          "name": "eligibility_total_lessons",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "eligibility_watched_seconds": {
-          "name": "eligibility_watched_seconds",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "eligibility_redeemed_seats": {
-          "name": "eligibility_redeemed_seats",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
         },
         "requested_at": {
           "name": "requested_at",
@@ -1329,56 +1515,31 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "resolution_note": {
-          "name": "resolution_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {
-        "refund_requests_purchase_idx": {
-          "name": "refund_requests_purchase_idx",
-          "columns": [
-            "purchase_id"
-          ],
+        "refunds_purchase_idx": {
+          "name": "refunds_purchase_idx",
+          "columns": ["purchase_id"],
           "isUnique": false
-        },
-        "refund_requests_one_open_per_purchase_idx": {
-          "name": "refund_requests_one_open_per_purchase_idx",
-          "columns": [
-            "purchase_id"
-          ],
-          "isUnique": true,
-          "where": "\"refund_requests\".\"status\" = 'open'"
         }
       },
       "foreignKeys": {
-        "refund_requests_purchase_id_purchases_id_fk": {
-          "name": "refund_requests_purchase_id_purchases_id_fk",
-          "tableFrom": "refund_requests",
+        "refunds_purchase_id_purchases_id_fk": {
+          "name": "refunds_purchase_id_purchases_id_fk",
+          "tableFrom": "refunds",
           "tableTo": "purchases",
-          "columnsFrom": [
-            "purchase_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["purchase_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "refund_requests_resolved_by_user_id_users_id_fk": {
-          "name": "refund_requests_resolved_by_user_id_users_id_fk",
-          "tableFrom": "refund_requests",
+        "refunds_resolved_by_user_id_users_id_fk": {
+          "name": "refunds_resolved_by_user_id_users_id_fk",
+          "tableFrom": "refunds",
           "tableTo": "users",
-          "columnsFrom": [
-            "resolved_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["resolved_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1432,12 +1593,8 @@
           "name": "team_members_team_id_teams_id_fk",
           "tableFrom": "team_members",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1445,12 +1602,8 @@
           "name": "team_members_user_id_users_id_fk",
           "tableFrom": "team_members",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1539,9 +1692,7 @@
       "indexes": {
         "users_email_unique": {
           "name": "users_email_unique",
-          "columns": [
-            "email"
-          ],
+          "columns": ["email"],
           "isUnique": true
         }
       },
@@ -1602,12 +1753,8 @@
           "name": "video_watch_events_user_id_users_id_fk",
           "tableFrom": "video_watch_events",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1615,12 +1762,8 @@
           "name": "video_watch_events_lesson_id_lessons_id_fk",
           "tableFrom": "video_watch_events",
           "tableTo": "lessons",
-          "columnsFrom": [
-            "lesson_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["lesson_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1634,9 +1777,7 @@
   "enums": {},
   "_meta": {
     "schemas": {},
-    "tables": {
-      "\"refunds\"": "\"refund_requests\""
-    },
+    "tables": {},
     "columns": {}
   },
   "internal": {

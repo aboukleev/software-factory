@@ -1,8 +1,14 @@
 import { NavLink, Form } from "react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "~/lib/utils";
 import { UserRole } from "~/db/schema";
 import { UserAvatar } from "~/components/user-avatar";
+import {
+  NotificationFeed,
+  type NotificationFeedItem,
+} from "~/components/notification-feed";
+import { NotificationSync } from "~/components/notification-sync";
+import { requestNotificationReconciliation } from "~/services/notificationSync";
 import {
   BookOpen,
   ChartColumn,
@@ -18,6 +24,7 @@ import {
   LogOut,
   Settings,
   ReceiptText,
+  Bell,
 } from "lucide-react";
 
 interface CurrentUser {
@@ -41,6 +48,11 @@ interface SidebarProps {
   currentUser: CurrentUser | null;
   recentCourses?: RecentCourse[];
   isTeamAdmin?: boolean;
+  notificationFeed?: {
+    items: NotificationFeedItem[];
+    unreadCount: number;
+    nextCursor: string | null;
+  };
 }
 
 interface NavItem {
@@ -117,12 +129,96 @@ export function Sidebar({
   currentUser,
   recentCourses = [],
   isTeamAdmin = false,
+  notificationFeed = { items: [], unreadCount: 0, nextCursor: null },
 }: SidebarProps) {
   const currentUserRole = currentUser?.role ?? null;
   const [isDark, setIsDark] = useState(false);
+  const [feedOpen, setFeedOpen] = useState(false);
+  const notificationBellRef = useRef<HTMLButtonElement>(null);
+  const authoritativeUnreadCount = notificationFeed.unreadCount;
+  const [unreadCount, setUnreadCount] = useState(authoritativeUnreadCount);
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains("dark"));
+  }, []);
+
+  useEffect(() => {
+    if (!feedOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [feedOpen]);
+
+  const closeNotificationFeed = useCallback((returnFocus = true) => {
+    setFeedOpen(false);
+    if (returnFocus) {
+      requestAnimationFrame(() => notificationBellRef.current?.focus());
+    }
+  }, []);
+
+  function containNotificationFocus(
+    event: React.KeyboardEvent<HTMLElement>
+  ) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeNotificationFeed();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const controls = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter(
+      (element) =>
+        !element.hasAttribute("hidden") && element.getClientRects().length > 0
+    );
+    if (controls.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (!controls.includes(document.activeElement as HTMLElement)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  const applySynchronizedPage = useCallback(
+    (page: { unreadCount: number }) => setUnreadCount(page.unreadCount),
+    []
+  );
+
+  useEffect(() => {
+    setUnreadCount(authoritativeUnreadCount);
+  }, [authoritativeUnreadCount]);
+
+  useEffect(() => {
+    const updateUnreadCount = (event: Event) => {
+      const count = (event as CustomEvent<unknown>).detail;
+      if (typeof count === "number") setUnreadCount(count);
+    };
+    window.addEventListener(
+      "cadence:notification-unread-count",
+      updateUnreadCount
+    );
+    return () =>
+      window.removeEventListener(
+        "cadence:notification-unread-count",
+        updateUnreadCount
+      );
   }, []);
 
   function toggleDarkMode() {
@@ -136,10 +232,76 @@ export function Sidebar({
 
   return (
     <aside className="flex h-screen w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="flex h-14 items-center border-b border-sidebar-border px-4">
+      <NotificationSync
+        personId={currentUser?.id ?? null}
+        initialPage={notificationFeed}
+        onPage={applySynchronizedPage}
+      />
+      <div className="relative flex h-14 items-center justify-between border-b border-sidebar-border px-4">
         <NavLink to="/" className="text-lg font-bold tracking-tight">
           Cadence
         </NavLink>
+        {currentUser && (
+          <button
+            ref={notificationBellRef}
+            type="button"
+            aria-label={
+              unreadCount > 0
+                ? `Notification Feed, ${unreadCount} unread`
+                : "Notification Feed"
+            }
+            aria-expanded={feedOpen}
+            onClick={() =>
+              setFeedOpen((open) => {
+                if (!open) requestNotificationReconciliation();
+                return !open;
+              })
+            }
+            className="relative flex min-h-11 min-w-11 items-center justify-center rounded-md p-2 hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            <Bell className="size-4" />
+            {unreadCount > 0 && (
+              <span
+                aria-hidden="true"
+                className="absolute right-1 top-1 size-2 rounded-full bg-primary"
+              />
+            )}
+          </button>
+        )}
+        {feedOpen && currentUser && (
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Notification Feed"
+            onKeyDown={containNotificationFocus}
+            className="fixed inset-0 z-40 flex min-h-0 flex-col overflow-hidden border bg-popover p-4 text-popover-foreground shadow-lg sm:absolute sm:inset-auto sm:left-2 sm:top-12 sm:max-h-[calc(100vh-4rem)] sm:w-96 sm:max-w-[calc(100vw-1rem)] sm:rounded-md sm:p-3"
+          >
+            <button
+              type="button"
+              aria-label="Close Notification Feed"
+              onClick={() => closeNotificationFeed()}
+              className="absolute right-2 top-2 z-10 flex min-h-11 min-w-11 items-center justify-center rounded-md text-2xl leading-none hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              <span aria-hidden="true">&times;</span>
+            </button>
+            <div
+              role="region"
+              aria-label="Notification Feed"
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <NotificationFeed
+                initialPage={notificationFeed}
+                onUnreadCountChange={setUnreadCount}
+                onActivate={() => {
+                  setUnreadCount((count) => Math.max(0, count - 1));
+                  setFeedOpen(false);
+                }}
+                onReadFailure={() => setUnreadCount((count) => count + 1)}
+                onOpenFull={() => closeNotificationFeed(false)}
+              />
+            </div>
+          </section>
+        )}
       </div>
 
       <nav className="flex-1 space-y-1 p-3">

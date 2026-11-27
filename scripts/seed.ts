@@ -65,6 +65,13 @@ async function seed() {
 
   // Drop and recreate tables for a clean seed
   sqlite.exec(`
+    DROP TABLE IF EXISTS notification_delivery_transitions;
+    DROP TABLE IF EXISTS notification_delivery_incidents;
+    DROP TABLE IF EXISTS notification_outcome_events;
+    DROP TABLE IF EXISTS notification_deliveries;
+    DROP TABLE IF EXISTS notification_events;
+    DROP TABLE IF EXISTS notification_dispatcher_heartbeats;
+    DROP TABLE IF EXISTS notification_operation_controls;
     DROP TABLE IF EXISTS comments;
     DROP TABLE IF EXISTS course_ratings;
     DROP TABLE IF EXISTS video_watch_events;
@@ -93,6 +100,16 @@ async function seed() {
   migrate(db, { migrationsFolder });
 
   console.log("Tables created.");
+
+  db.insert(schema.notificationOperationControls)
+    .values({
+      id: 1,
+      creationEnabled: false,
+      dispatchEnabled: true,
+      feedEnabled: false,
+      updatedAt: new Date().toISOString(),
+    })
+    .run();
 
   // Every count this script reports is read back out of the database. A written
   // -down count is a count that goes stale the first time the data around it
@@ -224,15 +241,40 @@ async function seed() {
   // generated at the bottom of this file. Sign-up dates are spread across the
   // last twelve months, including the last few days.
   const cohortNames = [
-    "Ava Nakamura", "Noah Blackwood", "Isla Fernandes", "Ethan Okafor",
-    "Mia Lindqvist", "Lucas Moreau", "Zara Haddad", "Felix Andersen",
-    "Nina Kowalski", "Omar Rahman", "Chloe Beaumont", "Dmitri Volkov",
-    "Priya Raghavan", "Tomas Silva", "Hana Kim", "Gabriel Rossi",
-    "Amara Diallo", "Jonas Weber", "Lena Petrova", "Kwame Mensah",
-    "Sofia Ricci", "Aarav Shah", "Freya Nilsen", "Diego Castillo",
-    "Yuki Tanaka", "Rosa Delgado", "Idris Bello", "Clara Hoffmann",
-    "Mateo Alvarez", "Elif Demir", "Ruben Ortiz", "Anika Bose",
-    "Caleb Ncube", "Marta Novak",
+    "Ava Nakamura",
+    "Noah Blackwood",
+    "Isla Fernandes",
+    "Ethan Okafor",
+    "Mia Lindqvist",
+    "Lucas Moreau",
+    "Zara Haddad",
+    "Felix Andersen",
+    "Nina Kowalski",
+    "Omar Rahman",
+    "Chloe Beaumont",
+    "Dmitri Volkov",
+    "Priya Raghavan",
+    "Tomas Silva",
+    "Hana Kim",
+    "Gabriel Rossi",
+    "Amara Diallo",
+    "Jonas Weber",
+    "Lena Petrova",
+    "Kwame Mensah",
+    "Sofia Ricci",
+    "Aarav Shah",
+    "Freya Nilsen",
+    "Diego Castillo",
+    "Yuki Tanaka",
+    "Rosa Delgado",
+    "Idris Bello",
+    "Clara Hoffmann",
+    "Mateo Alvarez",
+    "Elif Demir",
+    "Ruben Ortiz",
+    "Anika Bose",
+    "Caleb Ncube",
+    "Marta Novak",
   ];
 
   const cohort = db
@@ -1995,6 +2037,120 @@ This course is still in draft while the cluster examples are rewritten against t
     `Created ${countRows(schema.comments)} lesson comments across ${countRows(schema.comments, isNull(schema.comments.parentId))} threads.`
   );
 
+  const seededNotificationIdentity = `question.created:${c1q1.id}`;
+  const seededNotificationEvent = db
+    .insert(schema.notificationEvents)
+    .values({
+      identity: seededNotificationIdentity,
+      kind: "question.created",
+      occurredAt: c1q1.createdAt,
+      sourceCommentId: c1q1.id,
+      rootQuestionId: c1q1.id,
+      actorId: c1q1.userId,
+      actorCapacity: "student",
+      recipientId: instructor1.id,
+      courseId: course1.id,
+      lessonId: c1q1.lessonId,
+    })
+    .returning()
+    .get();
+  db.insert(schema.notificationDeliveries)
+    .values({
+      notificationEventId: seededNotificationEvent.id,
+      recipientId: instructor1.id,
+      channel: "in_app",
+      workflowKey: "student-question-created",
+      idempotencyKey: `${seededNotificationIdentity}:${instructor1.id}:in_app`,
+      providerPayload: JSON.stringify({
+        eventIdentity: seededNotificationIdentity,
+        eventKind: "question.created",
+        occurredAt: c1q1.createdAt,
+        sourceCommentId: c1q1.id,
+        rootQuestionId: c1q1.id,
+        recipientId: instructor1.id,
+        courseId: course1.id,
+        lessonId: c1q1.lessonId,
+      }),
+      status: "queued",
+      nextAttemptAt: c1q1.createdAt,
+    })
+    .run();
+
+  // Seed one content-free historical incident so the outcome and incident
+  // tables are exercised by the disposable development database as well as by
+  // tests. The logical Notification identity and immutable payload are reused;
+  // only opaque provider references are retained as evidence.
+  const incidentIdentity = `question.created:${c2q2.id}`;
+  const incidentEvent = db
+    .insert(schema.notificationEvents)
+    .values({
+      identity: incidentIdentity,
+      kind: "question.created",
+      occurredAt: c2q2.createdAt,
+      sourceCommentId: c2q2.id,
+      rootQuestionId: c2q2.id,
+      actorId: c2q2.userId,
+      actorCapacity: "student",
+      recipientId: instructor2.id,
+      courseId: course2.id,
+      lessonId: c2q2.lessonId,
+    })
+    .returning()
+    .get();
+  const incidentDelivery = db
+    .insert(schema.notificationDeliveries)
+    .values({
+      notificationEventId: incidentEvent.id,
+      recipientId: instructor2.id,
+      channel: "in_app",
+      workflowKey: "student-question-created",
+      idempotencyKey: `${incidentIdentity}:${instructor2.id}:in_app`,
+      providerPayload: JSON.stringify({
+        eventIdentity: incidentIdentity,
+        eventKind: "question.created",
+        occurredAt: c2q2.createdAt,
+        sourceCommentId: c2q2.id,
+        rootQuestionId: c2q2.id,
+        recipientId: instructor2.id,
+        courseId: course2.id,
+        lessonId: c2q2.lessonId,
+      }),
+      status: "outcome_unknown",
+      nextAttemptAt: c2q2.createdAt,
+      acceptedAt: c2q2.createdAt,
+      errorCategory: "provider_physical_duplicate",
+      providerRequestId: "seed-request-duplicate",
+      providerWorkflowRunId: "seed-run-duplicate",
+      outcomeCheckedAt: c2q2.createdAt,
+    })
+    .returning()
+    .get();
+  db.insert(schema.notificationOutcomeEvents)
+    .values({
+      deliveryId: incidentDelivery.id,
+      providerEventId: "seed-outcome-duplicate",
+      kind: "delivered",
+      providerMessageIds: JSON.stringify([
+        "seed-message-one",
+        "seed-message-two",
+      ]),
+      occurredAt: c2q2.createdAt,
+    })
+    .run();
+  db.insert(schema.notificationDeliveryIncidents)
+    .values({
+      deliveryId: incidentDelivery.id,
+      providerEventId: "seed-outcome-duplicate",
+      kind: "physical_duplicate",
+      evidence: JSON.stringify({
+        messageIds: ["seed-message-one", "seed-message-two"],
+      }),
+    })
+    .run();
+  console.log(
+    `Created ${countRows(schema.notificationEvents)} notification events, ${countRows(schema.notificationDeliveries)} deliveries, ${countRows(schema.notificationOutcomeEvents)} outcome event, and ${countRows(schema.notificationDeliveryIncidents)} delivery incident.`
+  );
+
   // ─── Lesson Progress ───
 
   // Helper to mark lessons as complete
@@ -2060,7 +2216,9 @@ This course is still in draft while the cluster examples are rewritten against t
   markComplete(students[4].id, course1LessonIds[0], 12);
   markInProgress(students[4].id, course1LessonIds[1]);
 
-  console.log(`Created ${countRows(schema.lessonProgress)} lesson progress records.`);
+  console.log(
+    `Created ${countRows(schema.lessonProgress)} lesson progress records.`
+  );
 
   // ─── Quiz Attempts ───
 

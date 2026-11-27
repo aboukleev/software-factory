@@ -18,7 +18,7 @@ CREATE TABLE `__new_refund_requests` (
 	FOREIGN KEY (`resolved_by_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-INSERT INTO `__new_refund_requests`("id", "purchase_id", "status", "reason", "amount_refunded", "eligibility_completed_lessons", "eligibility_total_lessons", "eligibility_watched_seconds", "eligibility_redeemed_seats", "requested_at", "resolved_at", "resolved_by_user_id", "resolution_note") SELECT "id", "purchase_id", "status", "reason", "amount_refunded", 0, 0, 0, 0, "requested_at", "resolved_at", "resolved_by_user_id", NULL FROM `refund_requests`;--> statement-breakpoint
+INSERT INTO `__new_refund_requests`("id", "purchase_id", "status", "reason", "amount_refunded", "eligibility_completed_lessons", "eligibility_total_lessons", "eligibility_watched_seconds", "eligibility_redeemed_seats", "requested_at", "resolved_at", "resolved_by_user_id", "resolution_note") SELECT "id", "purchase_id", CASE WHEN "status" = 'requested' THEN 'open' ELSE "status" END, "reason", "amount_refunded", 0, 0, 0, 0, "requested_at", "resolved_at", "resolved_by_user_id", NULL FROM `refund_requests`;--> statement-breakpoint
 DROP TABLE `refund_requests`;--> statement-breakpoint
 ALTER TABLE `__new_refund_requests` RENAME TO `refund_requests`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint
